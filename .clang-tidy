@@ -1,0 +1,11 @@
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-branch-clone,
+  bugprone-suspicious-memset-usage,
+  bugprone-sizeof-expression,
+  bugprone-integer-division,
+  bugprone-macro-parentheses
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+FormatStyle: none
