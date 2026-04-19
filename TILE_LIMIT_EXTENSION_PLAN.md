@@ -21,6 +21,21 @@ If the goal is to support more than `512` distinct tiles while preserving a MAP-
 
 `swosconv` alone can emit a different file format, but the original game binary will not understand it unless its map-loading and pitch-rendering logic are updated to decode the extended tile references.
 
+With the current fixed pitch geometry:
+
+- columns: `42`
+- rows: `55`
+- total map cells: `2310`
+
+So the geometric maximum is `2310` distinct tiles if every cell uses a different tile.
+
+For a conservative first version, this project should target:
+
+- `1024` distinct tiles maximum
+- tile index range `0..1023`
+
+This doubles the current legacy limit while keeping the index width to `10` bits conceptually, even if the file format stores indices in a wider integer type.
+
 ## Development Options
 
 ### Option 1: Define an Extended MAP Format

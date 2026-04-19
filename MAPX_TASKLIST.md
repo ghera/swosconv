@@ -15,6 +15,7 @@ This task list assumes the following documents are the current reference:
 - [ ] review `MAPX_BINARY_SPEC.md` for any missing invariants
 - [ ] confirm that little-endian is the intended on-disk encoding
 - [ ] confirm that version `1` uses fixed geometry only
+- [ ] confirm that version `1` caps `distinct_tile_count` at `1024`
 - [ ] confirm that `u16` cell indices are sufficient
 - [ ] decide whether strict readers reject trailing bytes after tile data
 - [ ] decide whether canonical offsets are mandatory for writers only or also for readers
@@ -52,6 +53,7 @@ This task list assumes the following documents are the current reference:
 
 - [ ] build distinct tile list from input pixels
 - [ ] allow tile counts above `512`
+- [ ] reject tile counts above `1024`
 - [ ] emit canonical version `1` header
 - [ ] emit row-major `u16` cell table
 - [ ] emit tile data block in SWOS-compatible tile byte layout
@@ -86,7 +88,8 @@ This task list assumes the following documents are the current reference:
 ### MAPX Edge Cases
 
 - [ ] add generated `513`-tile fixture
-- [ ] add generated `700+`-tile fixture
+- [ ] add generated `1024`-tile fixture
+- [ ] add generated `1025`-tile rejection case
 - [ ] add malformed magic test
 - [ ] add malformed version test
 - [ ] add malformed geometry test
@@ -147,6 +150,7 @@ This task list assumes the following documents are the current reference:
 - [ ] patch any index-width assumptions
 - [ ] keep legacy `.MAP` loader path intact
 - [ ] verify one controlled `513`-tile pitch renders successfully
+- [ ] verify one controlled near-cap pitch, ideally `1024` tiles, renders successfully
 
 ## Milestone 10: Hardening
 
@@ -154,7 +158,7 @@ This task list assumes the following documents are the current reference:
 - [ ] confirm safe failure behavior
 - [ ] test fallback to legacy assets
 - [ ] verify no regressions on stock compatible pitches
-- [ ] decide whether to cap `distinct_tile_count` below `65535` for runtime safety
+- [ ] re-evaluate whether `1024` remains sufficient after real-asset testing
 
 ## Nice-To-Have
 
@@ -182,6 +186,7 @@ This task list assumes the following documents are the current reference:
 - [ ] reverse engineer Amiga loader
 - [ ] patch runtime
 - [ ] validate with `513+` real asset
+- [ ] validate behavior at the chosen `1024`-tile v1 cap
 
 ## Done Definition
 

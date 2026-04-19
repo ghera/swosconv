@@ -86,15 +86,36 @@ Store unique tiles in the same tile byte layout already used by the current conv
 
 This keeps tile serialization close to the existing code and reduces migration risk.
 
-## Why `u16` Is Enough
+## Chosen Limit For Version 1
 
-Even `4096` distinct tiles would already be far beyond current needs and likely above what is practical on the target runtime.
+The fixed pitch geometry allows at most:
+
+- `42 * 55 = 2310` distinct tiles
+
+if every map cell is unique.
+
+For `MAPX` version `1`, the recommended practical cap is:
+
+- `1024` distinct tiles maximum
+- tile index range `0..1023`
+
+This is a deliberate conservative limit:
+
+- it doubles the legacy `512`-tile ceiling
+- it is likely sufficient for real pitch assets
+- it keeps the conceptual index width at `10` bits
+- it leaves room for a future revision if experience shows that `1024` is still too restrictive
+
+## Why `u16` Is Still Enough
+
+Even though version `1` would cap practical usage at `1024`, `u16` remains a sensible storage type because it:
 
 Using `u16`:
 
 - simplifies implementation
 - avoids premature format bloat
-- is enough for any realistic SWOS pitch modding scenario
+- avoids awkward bit packing in the file format
+- leaves room for future revisions above `1024` if needed
 
 There is no immediate need for `u32` tile indices in the cell table.
 
@@ -109,6 +130,7 @@ There is no immediate need for `u32` tile indices in the cell table.
   - reject inputs above `512` distinct tiles
 - `.MAPX` output:
   - allow counts above `512`
+  - reject counts above `1024`
   - emit explicit versioned header
 - `.MAPX` input:
   - decode directly
@@ -149,6 +171,12 @@ The smallest useful tooling prototype is:
    - `MAPX -> BMP`
 5. add synthetic over-limit fixture generation
 
+The first meaningful over-limit targets should include:
+
+- `513` distinct tiles
+- `1024` distinct tiles
+- `1025` distinct tiles rejected by `.MAPX v1`
+
 Do not start by modifying legacy `.MAP` behavior.
 
 ## Suggested Internal Data Model
@@ -185,7 +213,8 @@ Add at least these cases:
 
 - small representable input converted to `.MAPX`
 - synthetic image with `513` distinct tiles converted to `.MAPX`
-- synthetic image with `700+` distinct tiles converted to `.MAPX`
+- synthetic image with `1024` distinct tiles converted to `.MAPX`
+- synthetic image with `1025` distinct tiles rejected by `.MAPX v1`
 - `.MAPX -> RAW` roundtrip
 - `.MAPX -> BMP` roundtrip
 - malformed `.MAPX` header rejected
@@ -313,5 +342,6 @@ The most practical route is:
 
 - keep legacy `.MAP` exactly as-is
 - add a separate `.MAPX` format with explicit header and `u16` cell indices
+- cap `MAPX` version `1` at `1024` distinct tiles
 - patch the Amiga loader to recognize and decode `.MAPX`
 - widen only the specific runtime assumptions that are truly tied to `512` tiles

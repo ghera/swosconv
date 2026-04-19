@@ -139,9 +139,13 @@ Number of unique tiles stored in the tile data block.
 Valid range for version `1`:
 
 - minimum: `1`
-- maximum: `65535`
+- maximum: `1024`
 
-Practical implementations may choose a lower maximum for safety, but they must reject above-limit inputs explicitly.
+This corresponds to:
+
+- tile index range `0..1023`
+
+The fixed pitch geometry would allow up to `2310` distinct tiles in theory, but version `1` intentionally uses a lower cap to keep the first runtime patch conservative.
 
 ### `cell_table_offset`
 
@@ -380,7 +384,8 @@ At minimum, implementations should be tested with:
 - smallest valid tile count
 - exactly `512` tiles
 - exactly `513` tiles
-- larger over-limit case such as `700`
+- exactly `1024` tiles
+- exactly `1025` tiles rejected
 - bad magic
 - bad version
 - bad geometry
@@ -398,5 +403,6 @@ At minimum, implementations should be tested with:
 - row-major
 - based on `u16` cell indices
 - based on 32-byte SWOS-compatible tile payloads
+- capped at `1024` distinct tiles
 
 Its main purpose is to lift the legacy MAP index-width limit while keeping the implementation simple and auditable.
