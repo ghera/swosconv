@@ -5,7 +5,6 @@
 It converts between these formats:
 
 - `MAP` - SWOS tile map format used by the game executable
-- `MAPX` - extended tile map format for patched runtimes
 - `RAW` - planar/interleaved Amiga pitch bitmap data
 - `BMP` - constrained indexed Windows BMP used as an external editing/export format
 - `ILBM` - Amiga bitmap format using the `.IFF` extension in this project
@@ -17,17 +16,16 @@ The project is intentionally small and portable so it can be built with older to
 Supported conversions:
 
 - `.RAW -> .MAP, .BMP, .IFF (ILBM)`
-- `.RAW -> .MAPX`
 - `.MAP -> .RAW, .BMP, .IFF (ILBM)`
-- `.BMP -> .RAW, .MAP, .MAPX`
-- `.IFF (ILBM) -> .RAW, .MAP, .MAPX`
-- `.MAPX -> .RAW, .BMP, .IFF (ILBM)`
+- `.BMP -> .RAW, .MAP`
+- `.IFF (ILBM) -> .RAW, .MAP`
 
 Notes:
 
 - `.IFF` support means **ILBM**, not arbitrary IFF forms.
-- `BMP -> MAP` and `ILBM -> MAP` are limited by the SWOS MAP format and may be rejected if the image contains too many distinct tiles.
-- `.MAPX` is an extended format intended for patched runtimes and supports up to `1024` distinct tiles.
+- `BMP -> MAP` and `ILBM -> MAP` target the legacy SWOS pitch format used by the game.
+- Without extra flags, `.MAP` output stays within the practical size limit accepted by the stock Amiga executable.
+- `--no-tile-limit` is experimental and can emit larger legacy `.MAP` files, but those files are not compatible with the standard Amiga executable.
 
 ## Build
 
@@ -82,7 +80,7 @@ make CC=m68k-amigaos-gcc EXE=swosconv
 ## Usage
 
 ```sh
-swosconv -i <input> -o <output>
+swosconv [-n|--no-tile-limit] -i <input> -o <output>
 ```
 
 Examples:
@@ -95,6 +93,12 @@ swosconv -i test/ilbm/SWCPICH7.IFF -o TEST.RAW
 ```
 
 Mode detection is automatic from file extensions.
+
+### `--no-tile-limit`
+
+`--no-tile-limit` is an experimental flag for writing oversized legacy `.MAP` files.
+
+The resulting files are not compatible with the standard Amiga executable.
 
 ## Repository Layout
 
@@ -113,25 +117,19 @@ SWOS pitch MAP files contain:
 
 Each header cell is 4 bytes:
 
-- `a = 0`
-- `b = 0`
-- `tile_index = 2 * c + (d == 0 ? 0 : 1)`
+- big-endian tile offset within the tile data section
 
-This means the maximum representable tile index is `511`, so a MAP file can contain at most:
+For the supplied SWOS pitch assets, tile offsets are aligned to `128` bytes, matching the on-disk tile payload size used by the game.
 
-- `512` distinct tiles
+The stock Amiga executable also enforces a practical MAP file size limit of `0xB220` bytes. With the current pitch geometry, that means at most:
 
-If an input image exceeds that limit, `RAW -> MAP`, `BMP -> MAP`, or `ILBM -> MAP` must fail explicitly.
+- `284` distinct tiles
 
-### MAPX
+without patching the runtime.
 
-`MAPX` keeps the same `42 x 55` tile grid and `16 x 16` tile size as legacy MAP, but stores tile references with a wider index.
+By default, `RAW -> MAP`, `BMP -> MAP`, and `ILBM -> MAP` enforce that stock-compatible limit.
 
-Version `1` in this project supports:
-
-- up to `1024` distinct tiles
-- tile index range `0..1023`
-- the same `32`-byte tile payload format used by legacy MAP
+With `--no-tile-limit`, `swosconv` can emit larger legacy `.MAP` files, but those are experimental and not compatible with the standard Amiga executable.
 
 ### RAW
 
@@ -223,10 +221,10 @@ Reference ILBM/RAW pairs:
 - `test/ilbm/SWCPICH7.IFF` <-> `test/raw/SWCPICH7.RAW`
 - `test/ilbm/SWCPICH8.IFF` <-> `test/raw/SWCPICH8.RAW`
 
-Reference MAPX fixtures:
+Extended legacy MAP fixtures for experimental use:
 
-- `test/mapx/SWCPICH7.MAPX` <-> `test/raw/SWCPICH7.RAW`
-- `test/mapx/SWCPICH8.MAPX` <-> `test/raw/SWCPICH8.RAW`
+- `test/map/SWCPICH7.MAP` <-> `test/raw/SWCPICH7.RAW`
+- `test/map/SWCPICH8.MAP` <-> `test/raw/SWCPICH8.RAW`
 
 Verified behaviors:
 
@@ -236,13 +234,11 @@ Verified behaviors:
 - `RAW -> BMP` matches the supplied BMP references byte-for-byte
 - `ILBM -> RAW` matches the supplied RAW references
 - `RAW -> ILBM -> RAW` is lossless
-- `RAW -> MAPX` is deterministic for the supplied MAPX references
-- `BMP -> MAPX` matches the supplied MAPX references
-- `ILBM -> MAPX` matches the supplied MAPX references
-- `MAPX -> RAW` matches the supplied RAW references
-- `MAPX -> BMP` matches the supplied BMP references
 - `MAP -> BMP -> MAP` is lossless on representable inputs
 - `MAP -> ILBM -> RAW` is lossless on representable inputs
+- `RAW -> MAP` with `--no-tile-limit` is deterministic for `SWCPICH7` and `SWCPICH8`
+- `BMP -> MAP` with `--no-tile-limit` matches the supplied extended MAP references
+- `ILBM -> MAP` with `--no-tile-limit` matches the supplied extended MAP references
 
 Known non-representable examples for MAP output:
 
@@ -253,7 +249,7 @@ Known non-representable examples for MAP output:
 - `test/bmp/SWCPICH8.BMP`
 - `test/ilbm/SWCPICH8.IFF`
 
-These use more than `512` distinct tiles and must be rejected for MAP generation.
+These exceed the stock-compatible MAP size limit and must be rejected for MAP generation unless `--no-tile-limit` is used.
 
 ## Design Goals
 
@@ -277,7 +273,7 @@ The lint setup is intentionally conservative to stay practical for low-level C c
 
 - `ILBM` support is limited to `.IFF` files carrying `FORM ILBM`
 - BMP support is restricted to the exact indexed 4bpp pitch format described above
-- MAP output cannot represent more than `512` distinct tiles
+- stock-compatible MAP output is limited by the executable's practical file size cap
 - not every visually valid image can be converted to MAP without tile reduction
 
 ## License

@@ -22,10 +22,11 @@ invoke_converter() {
     input_path="$1"
     output_path="$2"
     label="$3"
+    shift 3
     stdout_path="$TEMP_ROOT/$label.stdout.txt"
     stderr_path="$TEMP_ROOT/$label.stderr.txt"
 
-    if ! "$EXE" -i "$input_path" -o "$output_path" >"$stdout_path" 2>"$stderr_path"; then
+    if ! "$EXE" "$@" -i "$input_path" -o "$output_path" >"$stdout_path" 2>"$stderr_path"; then
         printf '%s failed.\n' "$label" >&2
         cat "$stdout_path" "$stderr_path" >&2
         exit 1
@@ -44,7 +45,7 @@ assert_rejected_for_tile_limit() {
         exit 1
     fi
 
-    if ! grep -q "512" "$stdout_path" "$stderr_path"; then
+    if ! grep -q "stock SWOS MAP size limit" "$stdout_path" "$stderr_path"; then
         printf '%s failed for the wrong reason.\n' "$label" >&2
         cat "$stdout_path" "$stderr_path" >&2
         exit 1
@@ -106,21 +107,21 @@ for n in 1 2 3 4 5 6; do
 done
 
 for n in 7 8; do
+    map_path="test/map/SWCPICH${n}.MAP"
     raw_path="test/raw/SWCPICH${n}.RAW"
     bmp_path="test/bmp/SWCPICH${n}.BMP"
     ilbm_path="test/ilbm/SWCPICH${n}.IFF"
-    mapx_path="test/mapx/SWCPICH${n}.MAPX"
 
     raw_from_bmp="$TEMP_ROOT/SWCPICH${n}.from_bmp.raw"
     bmp_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.bmp"
     raw_from_ilbm="$TEMP_ROOT/SWCPICH${n}.from_ilbm.raw"
     ilbm_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.iff"
     raw_roundtrip="$TEMP_ROOT/SWCPICH${n}.roundtrip.raw"
-    mapx_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.mapx"
-    mapx_from_bmp="$TEMP_ROOT/SWCPICH${n}.from_bmp.mapx"
-    mapx_from_ilbm="$TEMP_ROOT/SWCPICH${n}.from_ilbm.mapx"
-    raw_from_mapx="$TEMP_ROOT/SWCPICH${n}.from_mapx.raw"
-    bmp_from_mapx="$TEMP_ROOT/SWCPICH${n}.from_mapx.bmp"
+    map_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.map"
+    map_from_bmp="$TEMP_ROOT/SWCPICH${n}.from_bmp.map"
+    map_from_ilbm="$TEMP_ROOT/SWCPICH${n}.from_ilbm.map"
+    raw_from_map="$TEMP_ROOT/SWCPICH${n}.from_map.raw"
+    bmp_from_map="$TEMP_ROOT/SWCPICH${n}.from_map.bmp"
 
     invoke_converter "$bmp_path" "$raw_from_bmp" "swcpich${n}_bmp_to_raw"
     assert_file_equal "$raw_from_bmp" "$raw_path" "SWCPICH${n} BMP->RAW"
@@ -134,25 +135,25 @@ for n in 7 8; do
     assert_file_equal "$raw_from_ilbm" "$raw_path" "SWCPICH${n} ILBM->RAW"
     printf 'PASS SWCPICH%s ILBM->RAW\n' "$n"
 
-    invoke_converter "$raw_path" "$mapx_from_raw" "swcpich${n}_raw_to_mapx"
-    assert_file_equal "$mapx_from_raw" "$mapx_path" "SWCPICH${n} RAW->MAPX"
-    printf 'PASS SWCPICH%s RAW->MAPX\n' "$n"
+    invoke_converter "$raw_path" "$map_from_raw" "swcpich${n}_raw_to_map" --no-tile-limit
+    assert_file_equal "$map_from_raw" "$map_path" "SWCPICH${n} RAW->MAP (--no-tile-limit)"
+    printf 'PASS SWCPICH%s RAW->MAP (--no-tile-limit)\n' "$n"
 
-    invoke_converter "$bmp_path" "$mapx_from_bmp" "swcpich${n}_bmp_to_mapx"
-    assert_file_equal "$mapx_from_bmp" "$mapx_path" "SWCPICH${n} BMP->MAPX"
-    printf 'PASS SWCPICH%s BMP->MAPX\n' "$n"
+    invoke_converter "$bmp_path" "$map_from_bmp" "swcpich${n}_bmp_to_map" --no-tile-limit
+    assert_file_equal "$map_from_bmp" "$map_path" "SWCPICH${n} BMP->MAP (--no-tile-limit)"
+    printf 'PASS SWCPICH%s BMP->MAP (--no-tile-limit)\n' "$n"
 
-    invoke_converter "$ilbm_path" "$mapx_from_ilbm" "swcpich${n}_ilbm_to_mapx"
-    assert_file_equal "$mapx_from_ilbm" "$mapx_path" "SWCPICH${n} ILBM->MAPX"
-    printf 'PASS SWCPICH%s ILBM->MAPX\n' "$n"
+    invoke_converter "$ilbm_path" "$map_from_ilbm" "swcpich${n}_ilbm_to_map" --no-tile-limit
+    assert_file_equal "$map_from_ilbm" "$map_path" "SWCPICH${n} ILBM->MAP (--no-tile-limit)"
+    printf 'PASS SWCPICH%s ILBM->MAP (--no-tile-limit)\n' "$n"
 
-    invoke_converter "$mapx_path" "$raw_from_mapx" "swcpich${n}_mapx_to_raw"
-    assert_file_equal "$raw_from_mapx" "$raw_path" "SWCPICH${n} MAPX->RAW"
-    printf 'PASS SWCPICH%s MAPX->RAW\n' "$n"
+    invoke_converter "$map_path" "$raw_from_map" "swcpich${n}_map_to_raw"
+    assert_file_equal "$raw_from_map" "$raw_path" "SWCPICH${n} MAP->RAW"
+    printf 'PASS SWCPICH%s MAP->RAW\n' "$n"
 
-    invoke_converter "$mapx_path" "$bmp_from_mapx" "swcpich${n}_mapx_to_bmp"
-    assert_file_equal "$bmp_from_mapx" "$bmp_path" "SWCPICH${n} MAPX->BMP"
-    printf 'PASS SWCPICH%s MAPX->BMP\n' "$n"
+    invoke_converter "$map_path" "$bmp_from_map" "swcpich${n}_map_to_bmp"
+    assert_file_equal "$bmp_from_map" "$bmp_path" "SWCPICH${n} MAP->BMP"
+    printf 'PASS SWCPICH%s MAP->BMP\n' "$n"
 
     invoke_converter "$raw_path" "$ilbm_from_raw" "swcpich${n}_raw_to_ilbm"
     invoke_converter "$ilbm_from_raw" "$raw_roundtrip" "swcpich${n}_raw_ilbm_raw"
