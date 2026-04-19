@@ -81,6 +81,7 @@ This task list assumes the following documents are the current reference:
 - [ ] add `BMP -> MAPX -> BMP` roundtrip test
 - [ ] add `MAPX -> RAW` golden test
 - [ ] add `MAPX -> BMP` golden test
+- [ ] use `SWCPICH7` and `SWCPICH8` as real over-limit validation assets, since they are currently rejected by legacy `.MAP` generation
 
 ### MAPX Edge Cases
 

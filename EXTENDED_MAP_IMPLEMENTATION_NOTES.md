@@ -192,6 +192,10 @@ Add at least these cases:
 - malformed tile count rejected
 - out-of-range cell index rejected
 
+Practical note:
+
+- the existing `SWCPICH7` and `SWCPICH8` assets are good real-world validation candidates because they already exceed the legacy `.MAP` limit and are currently rejected for MAP generation
+
 ### Fixture Strategy
 
 Do not rely only on hand-authored binary fixtures.
