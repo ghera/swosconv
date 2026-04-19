@@ -109,12 +109,18 @@ for n in 7 8; do
     raw_path="test/raw/SWCPICH${n}.RAW"
     bmp_path="test/bmp/SWCPICH${n}.BMP"
     ilbm_path="test/ilbm/SWCPICH${n}.IFF"
+    mapx_path="test/mapx/SWCPICH${n}.MAPX"
 
     raw_from_bmp="$TEMP_ROOT/SWCPICH${n}.from_bmp.raw"
     bmp_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.bmp"
     raw_from_ilbm="$TEMP_ROOT/SWCPICH${n}.from_ilbm.raw"
     ilbm_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.iff"
     raw_roundtrip="$TEMP_ROOT/SWCPICH${n}.roundtrip.raw"
+    mapx_from_raw="$TEMP_ROOT/SWCPICH${n}.from_raw.mapx"
+    mapx_from_bmp="$TEMP_ROOT/SWCPICH${n}.from_bmp.mapx"
+    mapx_from_ilbm="$TEMP_ROOT/SWCPICH${n}.from_ilbm.mapx"
+    raw_from_mapx="$TEMP_ROOT/SWCPICH${n}.from_mapx.raw"
+    bmp_from_mapx="$TEMP_ROOT/SWCPICH${n}.from_mapx.bmp"
 
     invoke_converter "$bmp_path" "$raw_from_bmp" "swcpich${n}_bmp_to_raw"
     assert_file_equal "$raw_from_bmp" "$raw_path" "SWCPICH${n} BMP->RAW"
@@ -127,6 +133,26 @@ for n in 7 8; do
     invoke_converter "$ilbm_path" "$raw_from_ilbm" "swcpich${n}_ilbm_to_raw"
     assert_file_equal "$raw_from_ilbm" "$raw_path" "SWCPICH${n} ILBM->RAW"
     printf 'PASS SWCPICH%s ILBM->RAW\n' "$n"
+
+    invoke_converter "$raw_path" "$mapx_from_raw" "swcpich${n}_raw_to_mapx"
+    assert_file_equal "$mapx_from_raw" "$mapx_path" "SWCPICH${n} RAW->MAPX"
+    printf 'PASS SWCPICH%s RAW->MAPX\n' "$n"
+
+    invoke_converter "$bmp_path" "$mapx_from_bmp" "swcpich${n}_bmp_to_mapx"
+    assert_file_equal "$mapx_from_bmp" "$mapx_path" "SWCPICH${n} BMP->MAPX"
+    printf 'PASS SWCPICH%s BMP->MAPX\n' "$n"
+
+    invoke_converter "$ilbm_path" "$mapx_from_ilbm" "swcpich${n}_ilbm_to_mapx"
+    assert_file_equal "$mapx_from_ilbm" "$mapx_path" "SWCPICH${n} ILBM->MAPX"
+    printf 'PASS SWCPICH%s ILBM->MAPX\n' "$n"
+
+    invoke_converter "$mapx_path" "$raw_from_mapx" "swcpich${n}_mapx_to_raw"
+    assert_file_equal "$raw_from_mapx" "$raw_path" "SWCPICH${n} MAPX->RAW"
+    printf 'PASS SWCPICH%s MAPX->RAW\n' "$n"
+
+    invoke_converter "$mapx_path" "$bmp_from_mapx" "swcpich${n}_mapx_to_bmp"
+    assert_file_equal "$bmp_from_mapx" "$bmp_path" "SWCPICH${n} MAPX->BMP"
+    printf 'PASS SWCPICH%s MAPX->BMP\n' "$n"
 
     invoke_converter "$raw_path" "$ilbm_from_raw" "swcpich${n}_raw_to_ilbm"
     invoke_converter "$ilbm_from_raw" "$raw_roundtrip" "swcpich${n}_raw_ilbm_raw"

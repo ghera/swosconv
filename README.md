@@ -5,6 +5,7 @@
 It converts between these formats:
 
 - `MAP` - SWOS tile map format used by the game executable
+- `MAPX` - extended tile map format for patched runtimes
 - `RAW` - planar/interleaved Amiga pitch bitmap data
 - `BMP` - constrained indexed Windows BMP used as an external editing/export format
 - `ILBM` - Amiga bitmap format using the `.IFF` extension in this project
@@ -16,14 +17,17 @@ The project is intentionally small and portable so it can be built with older to
 Supported conversions:
 
 - `.RAW -> .MAP, .BMP, .IFF (ILBM)`
+- `.RAW -> .MAPX`
 - `.MAP -> .RAW, .BMP, .IFF (ILBM)`
-- `.BMP -> .RAW, .MAP`
-- `.IFF (ILBM) -> .RAW, .MAP`
+- `.BMP -> .RAW, .MAP, .MAPX`
+- `.IFF (ILBM) -> .RAW, .MAP, .MAPX`
+- `.MAPX -> .RAW, .BMP, .IFF (ILBM)`
 
 Notes:
 
 - `.IFF` support means **ILBM**, not arbitrary IFF forms.
 - `BMP -> MAP` and `ILBM -> MAP` are limited by the SWOS MAP format and may be rejected if the image contains too many distinct tiles.
+- `.MAPX` is an extended format intended for patched runtimes and supports up to `1024` distinct tiles.
 
 ## Build
 
@@ -119,6 +123,16 @@ This means the maximum representable tile index is `511`, so a MAP file can cont
 
 If an input image exceeds that limit, `RAW -> MAP`, `BMP -> MAP`, or `ILBM -> MAP` must fail explicitly.
 
+### MAPX
+
+`MAPX` keeps the same `42 x 55` tile grid and `16 x 16` tile size as legacy MAP, but stores tile references with a wider index.
+
+Version `1` in this project supports:
+
+- up to `1024` distinct tiles
+- tile index range `0..1023`
+- the same `32`-byte tile payload format used by legacy MAP
+
 ### RAW
 
 The RAW format handled by this tool is the SWOS pitch bitmap in Amiga planar/interleaved layout.
@@ -209,6 +223,11 @@ Reference ILBM/RAW pairs:
 - `test/ilbm/SWCPICH7.IFF` <-> `test/raw/SWCPICH7.RAW`
 - `test/ilbm/SWCPICH8.IFF` <-> `test/raw/SWCPICH8.RAW`
 
+Reference MAPX fixtures:
+
+- `test/mapx/SWCPICH7.MAPX` <-> `test/raw/SWCPICH7.RAW`
+- `test/mapx/SWCPICH8.MAPX` <-> `test/raw/SWCPICH8.RAW`
+
 Verified behaviors:
 
 - `MAP -> RAW` matches the supplied RAW references
@@ -217,6 +236,11 @@ Verified behaviors:
 - `RAW -> BMP` matches the supplied BMP references byte-for-byte
 - `ILBM -> RAW` matches the supplied RAW references
 - `RAW -> ILBM -> RAW` is lossless
+- `RAW -> MAPX` is deterministic for the supplied MAPX references
+- `BMP -> MAPX` matches the supplied MAPX references
+- `ILBM -> MAPX` matches the supplied MAPX references
+- `MAPX -> RAW` matches the supplied RAW references
+- `MAPX -> BMP` matches the supplied BMP references
 - `MAP -> BMP -> MAP` is lossless on representable inputs
 - `MAP -> ILBM -> RAW` is lossless on representable inputs
 

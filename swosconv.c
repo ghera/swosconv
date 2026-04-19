@@ -22,6 +22,8 @@ typedef uint32_t dword_t;
 #define RAW_ROW_BYTES (TILE_BYTES_FOR_PX_ROW * TILES_MAP_COLS)
 #define TILES_MAP_CELLS (TILES_MAP_ROWS * TILES_MAP_COLS)
 #define MAX_DISTINCT_TILES 512
+#define MAX_MAPX_DISTINCT_TILES 1024
+#define MAPX_HEADER_SIZE 32
 
 #define PITCH_WIDTH (TILES_MAP_COLS * TILE_WIDTH)
 #define PITCH_HEIGHT (TILES_MAP_ROWS * TILE_HEIGHT)
@@ -1170,6 +1172,395 @@ static int find_tile_index(const byte *distinct_tiles, int distinct_tile_count, 
     return -1;
 }
 
+static int write_mapx_from_pixels(const byte *pixels, const char *output_path) {
+    FILE *out_file;
+    tile_index_t tiles_map[TILES_MAP_ROWS][TILES_MAP_COLS];
+    byte *distinct_tiles;
+    byte header[MAPX_HEADER_SIZE];
+    int distinct_tile_count;
+    int row;
+    int col;
+
+    distinct_tiles = (byte *)malloc((size_t)(MAX_MAPX_DISTINCT_TILES * TILE_BYTES_NUM));
+    if (distinct_tiles == (byte *)0) {
+        fprintf(stderr, "Out of memory while building MAPX tiles.\n");
+        return 1;
+    }
+
+    distinct_tile_count = 0;
+    for (row = 0; row < TILES_MAP_ROWS; ++row) {
+        byte row_tiles[TILES_MAP_COLS * TILE_BYTES_NUM];
+        int px_row;
+
+        memset(row_tiles, 0, sizeof(row_tiles));
+
+        for (px_row = 0; px_row < TILE_HEIGHT; ++px_row) {
+            int bp;
+            int y;
+
+            y = row * TILE_HEIGHT + px_row;
+            for (bp = 0; bp < TILE_DEPTH; ++bp) {
+                int bitplane_tile_idx;
+                int tile_pixel_row_idx;
+
+                bitplane_tile_idx = BYTES_PER_BITPLANE_PX_ROW * bp;
+                tile_pixel_row_idx = px_row * TILE_BYTES_FOR_PX_ROW + bitplane_tile_idx;
+                for (col = 0; col < TILES_MAP_COLS; ++col) {
+                    int bp_col;
+
+                    for (bp_col = 0; bp_col < BYTES_PER_BITPLANE_PX_ROW; ++bp_col) {
+                        byte packed_bits;
+                        int bit;
+
+                        packed_bits = 0;
+                        for (bit = 0; bit < 8; ++bit) {
+                            long x;
+                            byte color_index;
+
+                            x = (long)(col * TILE_WIDTH + bp_col * 8 + bit);
+                            color_index = pixels[y * PITCH_WIDTH + x];
+                            packed_bits = (byte)((packed_bits << 1) | ((color_index >> bp) & 1));
+                        }
+                        row_tiles[col * TILE_BYTES_NUM + tile_pixel_row_idx + bp_col] = packed_bits;
+                    }
+                }
+            }
+        }
+
+        for (col = 0; col < TILES_MAP_COLS; ++col) {
+            const byte *tile_data;
+            int tile_idx;
+
+            tile_data = row_tiles + ((size_t)col * TILE_BYTES_NUM);
+            tile_idx = find_tile_index(distinct_tiles, distinct_tile_count, tile_data);
+            if (tile_idx < 0) {
+                if (distinct_tile_count >= MAX_MAPX_DISTINCT_TILES) {
+                    free(distinct_tiles);
+                    fprintf(stderr,
+                            "Image contains more than %d distinct tiles, but MAPX format supports at most %d.\n",
+                            MAX_MAPX_DISTINCT_TILES,
+                            MAX_MAPX_DISTINCT_TILES);
+                    return 1;
+                }
+
+                memcpy(distinct_tiles + ((size_t)distinct_tile_count * TILE_BYTES_NUM), tile_data, TILE_BYTES_NUM);
+                tile_idx = distinct_tile_count;
+                ++distinct_tile_count;
+            }
+
+            tiles_map[row][col] = (tile_index_t)tile_idx;
+        }
+    }
+
+    out_file = fopen(output_path, "wb");
+    if (out_file == (FILE *)0) {
+        free(distinct_tiles);
+        fprintf(stderr, "Unable to open output file.\n");
+        return 1;
+    }
+
+    memset(header, 0, sizeof(header));
+    memcpy(header, "MAPX", 4);
+    write_u16_le(header + 4, 1);
+    write_u16_le(header + 6, 0);
+    write_u16_le(header + 8, TILES_MAP_COLS);
+    write_u16_le(header + 10, TILES_MAP_ROWS);
+    write_u16_le(header + 12, TILE_WIDTH);
+    write_u16_le(header + 14, TILE_HEIGHT);
+    write_u32_le(header + 16, (dword_t)distinct_tile_count);
+    write_u32_le(header + 20, MAPX_HEADER_SIZE);
+    write_u32_le(header + 24, MAPX_HEADER_SIZE + (dword_t)(TILES_MAP_CELLS * sizeof(tile_index_t)));
+    write_u32_le(header + 28, 0);
+    fwrite(header, 1, sizeof(header), out_file);
+
+    for (row = 0; row < TILES_MAP_ROWS; ++row) {
+        for (col = 0; col < TILES_MAP_COLS; ++col) {
+            byte cell_bytes[2];
+
+            write_u16_le(cell_bytes, tiles_map[row][col]);
+            fwrite(cell_bytes, 1, 2, out_file);
+        }
+    }
+
+    fwrite(distinct_tiles, TILE_BYTES_NUM, (size_t)distinct_tile_count, out_file);
+
+    fclose(out_file);
+    free(distinct_tiles);
+
+    printf("Distinct tiles found: %d\n", distinct_tile_count);
+    return 0;
+}
+
+static int load_mapx_pixels(const char *input_path, byte **pixels_out) {
+    FILE *in_file;
+    long input_size;
+    byte header[MAPX_HEADER_SIZE];
+    dword_t distinct_tiles;
+    dword_t cell_table_offset;
+    dword_t tile_data_offset;
+    byte *tiles_data;
+    byte *pixels;
+    int row;
+    int col;
+
+    *pixels_out = (byte *)0;
+
+    in_file = fopen(input_path, "rb");
+    if (in_file == (FILE *)0) {
+        fprintf(stderr, "Unable to open input file.\n");
+        return 1;
+    }
+
+    if (!read_file_size(in_file, &input_size)) {
+        fclose(in_file);
+        fprintf(stderr, "Unable to determine MAPX file size.\n");
+        return 1;
+    }
+
+    if (input_size < MAPX_HEADER_SIZE || fread(header, 1, MAPX_HEADER_SIZE, in_file) != MAPX_HEADER_SIZE) {
+        fclose(in_file);
+        fprintf(stderr, "Unexpected end of MAPX header.\n");
+        return 1;
+    }
+
+    if (memcmp(header, "MAPX", 4) != 0) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported MAPX file signature.\n");
+        return 1;
+    }
+
+    if (read_u16_le(header + 4) != 1) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported MAPX version.\n");
+        return 1;
+    }
+
+    if (read_u16_le(header + 6) != 0 ||
+        read_u16_le(header + 8) != TILES_MAP_COLS ||
+        read_u16_le(header + 10) != TILES_MAP_ROWS ||
+        read_u16_le(header + 12) != TILE_WIDTH ||
+        read_u16_le(header + 14) != TILE_HEIGHT ||
+        read_u32_le(header + 28) != 0) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported MAPX header values.\n");
+        return 1;
+    }
+
+    distinct_tiles = read_u32_le(header + 16);
+    cell_table_offset = read_u32_le(header + 20);
+    tile_data_offset = read_u32_le(header + 24);
+    if (distinct_tiles == 0 || distinct_tiles > MAX_MAPX_DISTINCT_TILES) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported MAPX distinct tile count: %lu.\n", (unsigned long)distinct_tiles);
+        return 1;
+    }
+
+    if (cell_table_offset != MAPX_HEADER_SIZE ||
+        tile_data_offset != MAPX_HEADER_SIZE + (dword_t)(TILES_MAP_CELLS * sizeof(tile_index_t))) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported MAPX layout.\n");
+        return 1;
+    }
+
+    if ((long)(tile_data_offset + (distinct_tiles * TILE_BYTES_NUM)) > input_size) {
+        fclose(in_file);
+        fprintf(stderr, "MAPX tile data is truncated.\n");
+        return 1;
+    }
+
+    tiles_data = (byte *)malloc((size_t)(distinct_tiles * TILE_BYTES_NUM));
+    if (tiles_data == (byte *)0) {
+        fclose(in_file);
+        fprintf(stderr, "Out of memory while loading MAPX tiles.\n");
+        return 1;
+    }
+
+    pixels = (byte *)malloc((size_t)(PITCH_WIDTH * PITCH_HEIGHT));
+    if (pixels == (byte *)0) {
+        free(tiles_data);
+        fclose(in_file);
+        fprintf(stderr, "Out of memory while expanding MAPX pixels.\n");
+        return 1;
+    }
+
+    memset(pixels, 0, (size_t)(PITCH_WIDTH * PITCH_HEIGHT));
+
+    if (fseek(in_file, (long)tile_data_offset, SEEK_SET) != 0 ||
+        fread(tiles_data, TILE_BYTES_NUM, (size_t)distinct_tiles, in_file) != (size_t)distinct_tiles) {
+        free(tiles_data);
+        free(pixels);
+        fclose(in_file);
+        fprintf(stderr, "Unexpected end of MAPX tile data.\n");
+        return 1;
+    }
+
+    if (fseek(in_file, (long)cell_table_offset, SEEK_SET) != 0) {
+        free(tiles_data);
+        free(pixels);
+        fclose(in_file);
+        fprintf(stderr, "Unable to seek to MAPX cell table.\n");
+        return 1;
+    }
+
+    for (row = 0; row < TILES_MAP_ROWS; ++row) {
+        for (col = 0; col < TILES_MAP_COLS; ++col) {
+            byte cell_bytes[2];
+            tile_index_t tile_idx;
+            const byte *tile_data;
+            int px_row;
+
+            if (fread(cell_bytes, 1, 2, in_file) != 2) {
+                free(tiles_data);
+                free(pixels);
+                fclose(in_file);
+                fprintf(stderr, "Unexpected end of MAPX cell table.\n");
+                return 1;
+            }
+
+            tile_idx = (tile_index_t)read_u16_le(cell_bytes);
+            if ((dword_t)tile_idx >= distinct_tiles) {
+                free(tiles_data);
+                free(pixels);
+                fclose(in_file);
+                fprintf(stderr, "MAPX cell index out of range.\n");
+                return 1;
+            }
+
+            tile_data = tiles_data + ((size_t)tile_idx * TILE_BYTES_NUM);
+            for (px_row = 0; px_row < TILE_HEIGHT; ++px_row) {
+                int bp;
+
+                for (bp = 0; bp < TILE_DEPTH; ++bp) {
+                    int bitplane_tile_idx;
+                    int bp_col;
+
+                    bitplane_tile_idx = px_row * TILE_BYTES_FOR_PX_ROW + BYTES_PER_BITPLANE_PX_ROW * bp;
+                    for (bp_col = 0; bp_col < BYTES_PER_BITPLANE_PX_ROW; ++bp_col) {
+                        byte packed_bits;
+                        int bit;
+
+                        packed_bits = tile_data[bitplane_tile_idx + bp_col];
+                        for (bit = 0; bit < 8; ++bit) {
+                            long x;
+                            long y;
+                            byte plane_bit;
+
+                            x = (long)(col * TILE_WIDTH + bp_col * 8 + bit);
+                            y = (long)(row * TILE_HEIGHT + px_row);
+                            plane_bit = (byte)((packed_bits >> (7 - bit)) & 1);
+                            pixels[y * PITCH_WIDTH + x] =
+                                (byte)(pixels[y * PITCH_WIDTH + x] | (plane_bit << bp));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    free(tiles_data);
+    fclose(in_file);
+    *pixels_out = pixels;
+    return 0;
+}
+
+static int convert_raw_to_mapx(const char *input_path, const char *output_path) {
+    byte *pixels;
+    int result;
+
+    result = load_raw_pixels(input_path, &pixels);
+    if (result != 0) {
+        return result;
+    }
+
+    result = write_mapx_from_pixels(pixels, output_path);
+    free(pixels);
+    return result;
+}
+
+static int convert_bmp_to_mapx(const char *input_path, const char *output_path) {
+    byte *pixels;
+    int result;
+
+    result = load_bmp_pixels(input_path, &pixels);
+    if (result != 0) {
+        return result;
+    }
+
+    result = write_mapx_from_pixels(pixels, output_path);
+    free(pixels);
+    return result;
+}
+
+static int convert_ilbm_to_mapx(const char *input_path, const char *output_path) {
+    byte *pixels;
+    int result;
+
+    result = load_ilbm_pixels(input_path, &pixels);
+    if (result != 0) {
+        return result;
+    }
+
+    result = write_mapx_from_pixels(pixels, output_path);
+    free(pixels);
+    return result;
+}
+
+static int convert_mapx_to_raw(const char *input_path, const char *output_path) {
+    byte *pixels;
+    int result;
+
+    result = load_mapx_pixels(input_path, &pixels);
+    if (result != 0) {
+        return result;
+    }
+
+    result = write_raw_from_pixels(pixels, output_path);
+    free(pixels);
+    return result;
+}
+
+static int convert_mapx_to_bmp(const char *input_path, const char *output_path) {
+    byte *pixels;
+    int result;
+
+    result = load_mapx_pixels(input_path, &pixels);
+    if (result != 0) {
+        return result;
+    }
+
+    result = write_bmp_from_pixels(pixels, output_path);
+    free(pixels);
+    return result;
+}
+
+static int convert_mapx_to_ilbm(const char *input_path, const char *output_path) {
+    byte *pixels;
+    char tmp_raw_path[L_tmpnam + 4];
+    int result;
+
+    result = load_mapx_pixels(input_path, &pixels);
+    if (result != 0) {
+        return result;
+    }
+
+    if (tmpnam(tmp_raw_path) == (char *)0) {
+        free(pixels);
+        fprintf(stderr, "Unable to create temporary filename.\n");
+        return 1;
+    }
+
+    result = write_raw_from_pixels(pixels, tmp_raw_path);
+    free(pixels);
+    if (result != 0) {
+        remove(tmp_raw_path);
+        return result;
+    }
+
+    result = write_ilbm_from_raw(tmp_raw_path, output_path);
+    remove(tmp_raw_path);
+    return result;
+}
+
 static int write_map_from_pixels(const byte *pixels, const char *output_path) {
     FILE *out_file;
     tile_index_t tiles_map[TILES_MAP_ROWS][TILES_MAP_COLS];
@@ -1359,10 +1750,11 @@ static void print_supported_conversions(FILE *stream) {
     fprintf(stream,
             "\n"
             "Supported conversions:\n"
-            "  .RAW -> .MAP, .BMP, .IFF (ILBM)\n"
+            "  .RAW -> .MAP, .BMP, .IFF (ILBM), .MAPX\n"
             "  .MAP -> .RAW, .BMP, .IFF (ILBM)\n"
-            "  .BMP -> .RAW, .MAP\n"
-            "  .IFF (ILBM) -> .RAW, .MAP\n");
+            "  .BMP -> .RAW, .MAP, .MAPX\n"
+            "  .IFF (ILBM) -> .RAW, .MAP, .MAPX\n"
+            "  .MAPX -> .RAW, .BMP, .IFF (ILBM)\n");
 }
 
 static void print_usage(FILE *stream) {
@@ -1436,6 +1828,11 @@ int main(int argc, char *argv[]) {
         return write_ilbm_from_raw(input_path, output_path);
     }
 
+    if (extension_equals_ignore_case(input_path, ".raw") &&
+        extension_equals_ignore_case(output_path, ".mapx")) {
+        return convert_raw_to_mapx(input_path, output_path);
+    }
+
     if (extension_equals_ignore_case(input_path, ".map") &&
         extension_equals_ignore_case(output_path, ".raw")) {
         return convert_map_to_raw(input_path, output_path);
@@ -1461,6 +1858,11 @@ int main(int argc, char *argv[]) {
         return convert_bmp_to_map(input_path, output_path);
     }
 
+    if (extension_equals_ignore_case(input_path, ".bmp") &&
+        extension_equals_ignore_case(output_path, ".mapx")) {
+        return convert_bmp_to_mapx(input_path, output_path);
+    }
+
     if (extension_equals_ignore_case(input_path, ".iff") &&
         extension_equals_ignore_case(output_path, ".raw")) {
         return convert_ilbm_to_raw(input_path, output_path);
@@ -1469,6 +1871,26 @@ int main(int argc, char *argv[]) {
     if (extension_equals_ignore_case(input_path, ".iff") &&
         extension_equals_ignore_case(output_path, ".map")) {
         return convert_ilbm_to_map(input_path, output_path);
+    }
+
+    if (extension_equals_ignore_case(input_path, ".iff") &&
+        extension_equals_ignore_case(output_path, ".mapx")) {
+        return convert_ilbm_to_mapx(input_path, output_path);
+    }
+
+    if (extension_equals_ignore_case(input_path, ".mapx") &&
+        extension_equals_ignore_case(output_path, ".raw")) {
+        return convert_mapx_to_raw(input_path, output_path);
+    }
+
+    if (extension_equals_ignore_case(input_path, ".mapx") &&
+        extension_equals_ignore_case(output_path, ".bmp")) {
+        return convert_mapx_to_bmp(input_path, output_path);
+    }
+
+    if (extension_equals_ignore_case(input_path, ".mapx") &&
+        extension_equals_ignore_case(output_path, ".iff")) {
+        return convert_mapx_to_ilbm(input_path, output_path);
     }
 
     fprintf(stderr, "Unsupported conversion.\n");
