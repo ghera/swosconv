@@ -1357,23 +1357,18 @@ static int convert_map_to_ilbm(const char *input_path, const char *output_path) 
 
 static void print_supported_conversions(FILE *stream) {
     fprintf(stream,
+            "\n"
             "Supported conversions:\n"
-            "  .RAW -> .MAP\n"
-            "  .RAW -> .BMP\n"
-            "  .RAW -> ILBM (.IFF)\n"
-            "  .MAP -> .RAW\n"
-            "  .MAP -> .BMP\n"
-            "  .MAP -> ILBM (.IFF)\n"
-            "  .BMP -> .RAW\n"
-            "  .BMP -> .MAP\n"
-            "  ILBM (.IFF) -> .RAW\n"
-            "  ILBM (.IFF) -> .MAP\n"
-            "  ILBM (.IFF) -> .BMP\n");
+            "  .RAW -> .MAP, .BMP, .IFF (ILBM)\n"
+            "  .MAP -> .RAW, .BMP, .IFF (ILBM)\n"
+            "  .BMP -> .RAW, .MAP\n"
+            "  .IFF (ILBM) -> .RAW, .MAP\n");
 }
 
 static void print_usage(FILE *stream) {
     fprintf(stream,
             "swosconv %s\n"
+            "\n"
             "Usage: swosconv -i <input> -o <output>\n"
             "       swosconv --help\n"
             "       swosconv --version\n",
@@ -1474,20 +1469,6 @@ int main(int argc, char *argv[]) {
     if (extension_equals_ignore_case(input_path, ".iff") &&
         extension_equals_ignore_case(output_path, ".map")) {
         return convert_ilbm_to_map(input_path, output_path);
-    }
-
-    if (extension_equals_ignore_case(input_path, ".iff") &&
-        extension_equals_ignore_case(output_path, ".bmp")) {
-        byte *pixels;
-        int result;
-
-        result = load_ilbm_pixels(input_path, &pixels);
-        if (result != 0) {
-            return result;
-        }
-        result = write_bmp_from_pixels(pixels, output_path);
-        free(pixels);
-        return result;
     }
 
     fprintf(stderr, "Unsupported conversion.\n");

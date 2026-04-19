@@ -15,17 +15,10 @@ The project is intentionally small and portable so it can be built with older to
 
 Supported conversions:
 
-- `RAW -> MAP`
-- `RAW -> BMP`
-- `RAW -> ILBM` (`.IFF`)
-- `MAP -> RAW`
-- `MAP -> BMP`
-- `MAP -> ILBM` (`.IFF`)
-- `BMP -> RAW`
-- `BMP -> MAP`
-- `ILBM (.IFF) -> RAW`
-- `ILBM (.IFF) -> MAP`
-- `ILBM (.IFF) -> BMP`
+- `.RAW -> .MAP, .BMP, .IFF (ILBM)`
+- `.MAP -> .RAW, .BMP, .IFF (ILBM)`
+- `.BMP -> .RAW, .MAP`
+- `.IFF (ILBM) -> .RAW, .MAP`
 
 Notes:
 
@@ -103,7 +96,6 @@ Mode detection is automatic from file extensions.
 
 - [`swosconv.c`](./swosconv.c) - single-file implementation
 - [`Makefile`](./Makefile) - build entrypoint
-- [`doc/`](./doc) - format notes and sample assets
 - [`test/`](./test) - reference files, validation assets, and the Bash test runner
 
 ## Format Notes
