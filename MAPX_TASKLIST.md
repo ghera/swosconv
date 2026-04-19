@@ -1,0 +1,193 @@
+# MAPX Task List
+
+## Objective
+
+Track the practical work needed to add `.MAPX` support to `swosconv` and make it usable with a patched Amiga SWOS runtime.
+
+This task list assumes the following documents are the current reference:
+
+- `TILE_LIMIT_EXTENSION_PLAN.md`
+- `EXTENDED_MAP_IMPLEMENTATION_NOTES.md`
+- `MAPX_BINARY_SPEC.md`
+
+## Milestone 1: Freeze The Spec
+
+- [ ] review `MAPX_BINARY_SPEC.md` for any missing invariants
+- [ ] confirm that little-endian is the intended on-disk encoding
+- [ ] confirm that version `1` uses fixed geometry only
+- [ ] confirm that `u16` cell indices are sufficient
+- [ ] decide whether strict readers reject trailing bytes after tile data
+- [ ] decide whether canonical offsets are mandatory for writers only or also for readers
+- [ ] mark the spec as accepted for implementation
+
+## Milestone 2: Refactor `swosconv` Internal Model
+
+- [ ] identify current code paths where legacy `.MAP` assumptions are baked in
+- [ ] introduce an internal generic map representation:
+  - [ ] rows
+  - [ ] cols
+  - [ ] distinct tile count
+  - [ ] cell index buffer
+  - [ ] tile data buffer
+- [ ] separate in-memory representation from file serialization details
+- [ ] keep current legacy `.MAP` behavior byte-for-byte where applicable
+
+## Milestone 3: Add `.MAPX` Reader
+
+- [ ] add extension detection for `.mapx`
+- [ ] implement header parsing
+- [ ] implement checked little-endian reads for `u16` and `u32`
+- [ ] validate magic, version, flags, geometry, and reserved fields
+- [ ] validate `cell_table_offset`
+- [ ] validate `tile_data_offset`
+- [ ] validate file size coverage for cell table and tile block
+- [ ] load row-major `u16` cell indices
+- [ ] reject out-of-range cell indices
+- [ ] load tile data block
+- [ ] wire `.MAPX -> RAW`
+- [ ] wire `.MAPX -> BMP`
+- [ ] optionally wire `.MAPX -> .IFF (ILBM)` if still useful later
+
+## Milestone 4: Add `.MAPX` Writer
+
+- [ ] build distinct tile list from input pixels
+- [ ] allow tile counts above `512`
+- [ ] emit canonical version `1` header
+- [ ] emit row-major `u16` cell table
+- [ ] emit tile data block in SWOS-compatible tile byte layout
+- [ ] wire `RAW -> .MAPX`
+- [ ] wire `BMP -> .MAPX`
+- [ ] wire `.IFF (ILBM) -> .MAPX` only if there is a concrete use case
+
+## Milestone 5: CLI And Help
+
+- [ ] add `.MAPX` to extension-based mode detection
+- [ ] update `--help` supported conversions text
+- [ ] decide whether `.MAPX` should appear in README examples immediately or only after implementation is stable
+- [ ] document that legacy `.MAP` still rejects `> 512` distinct tiles
+- [ ] document that `.MAPX` is intended for patched runtimes
+
+## Milestone 6: Validation And Tests
+
+### Legacy Regression
+
+- [ ] verify all current `.MAP` tests still pass unchanged
+- [ ] verify all current `.RAW`, `.BMP`, and `.IFF` paths remain stable
+- [ ] add explicit regression asserting legacy `.MAP` rejects `513+` tiles
+
+### MAPX Happy Path
+
+- [ ] add `RAW -> MAPX -> RAW` roundtrip test
+- [ ] add `BMP -> MAPX -> BMP` roundtrip test
+- [ ] add `MAPX -> RAW` golden test
+- [ ] add `MAPX -> BMP` golden test
+
+### MAPX Edge Cases
+
+- [ ] add generated `513`-tile fixture
+- [ ] add generated `700+`-tile fixture
+- [ ] add malformed magic test
+- [ ] add malformed version test
+- [ ] add malformed geometry test
+- [ ] add truncated cell table test
+- [ ] add truncated tile block test
+- [ ] add out-of-range cell index test
+- [ ] add non-zero reserved/flags rejection tests
+
+### Test Tooling
+
+- [ ] decide whether fixture generation should be done in shell, C helper, or a separate script
+- [ ] keep golden binary fixtures small where possible
+- [ ] ensure tests can run without requiring Amiga-side tooling
+
+## Milestone 7: Documentation
+
+- [ ] add `.MAPX` section to `README.md`
+- [ ] document the difference between legacy `.MAP` and `.MAPX`
+- [ ] document compatibility expectations with unpatched SWOS
+- [ ] document exact current support matrix
+- [ ] cross-link the three design/spec docs if they remain in the repo
+
+## Milestone 8: Amiga Executable Recon
+
+### Loader
+
+- [ ] identify the file loading entry point for pitch assets
+- [ ] determine whether dispatch is extension-based, content-based, or hardcoded by asset slot
+- [ ] identify where legacy `.MAP` buffer parsing begins
+
+### Legacy Decode
+
+- [ ] locate the code that reconstructs `2 * c + (d == 0 ? 0 : 1)`
+- [ ] confirm whether header bytes `a` and `b` are ignored
+- [ ] identify where tile count is derived
+
+### Memory And Limits
+
+- [ ] locate all buffers sized for `512` tiles
+- [ ] locate any hard limits or compare instructions tied to `511` or `512`
+- [ ] locate any packed or narrow index storage
+- [ ] estimate memory headroom for larger tile sets
+
+### Renderer
+
+- [ ] determine whether the renderer uses tile indices directly after load
+- [ ] determine whether the pitch is expanded to a final planar buffer early
+- [ ] identify caching structures that may depend on the old limit
+
+## Milestone 9: Amiga Patch Prototype
+
+- [ ] choose runtime dispatch strategy:
+  - [ ] separate `.MAPX` loader path
+  - [ ] or detect `MAPX` magic after file load
+- [ ] implement header validation in the patched loader
+- [ ] implement cell table and tile block ingestion
+- [ ] patch memory allocation sizes
+- [ ] patch any index-width assumptions
+- [ ] keep legacy `.MAP` loader path intact
+- [ ] verify one controlled `513`-tile pitch renders successfully
+
+## Milestone 10: Hardening
+
+- [ ] test malformed `.MAPX` handling on the patched runtime
+- [ ] confirm safe failure behavior
+- [ ] test fallback to legacy assets
+- [ ] verify no regressions on stock compatible pitches
+- [ ] decide whether to cap `distinct_tile_count` below `65535` for runtime safety
+
+## Nice-To-Have
+
+- [ ] add a `--mapx` explicit mode override if extension-based dispatch becomes awkward
+- [ ] add a dump/debug mode to inspect `.MAPX` header and counts
+- [ ] add a small fixture inspector for development
+- [ ] add deterministic binary output checks for `.MAPX`
+
+## Risks To Watch
+
+- [ ] spec drift between docs and implementation
+- [ ] hidden legacy assumptions in `swosconv` map code
+- [ ] hidden `512`-tile assumptions in the Amiga executable
+- [ ] runtime memory pressure even if the file format works
+- [ ] testing only on tool side and not on real patched runtime
+
+## Suggested Implementation Order
+
+- [ ] freeze spec
+- [ ] refactor internal map model
+- [ ] implement `.MAPX` reader
+- [ ] implement `.MAPX` writer
+- [ ] add host-side tests
+- [ ] update help and README
+- [ ] reverse engineer Amiga loader
+- [ ] patch runtime
+- [ ] validate with `513+` real asset
+
+## Done Definition
+
+The work is done when all of the following are true:
+
+- [ ] `.MAPX` read/write works in `swosconv`
+- [ ] legacy `.MAP` behavior is unchanged
+- [ ] automated tests cover happy path and malformed files
+- [ ] patched Amiga runtime loads `.MAPX`
+- [ ] at least one `> 512` distinct-tile pitch renders correctly
