@@ -100,11 +100,29 @@ Mode detection is automatic from file extensions.
 
 The resulting files are not compatible with the standard Amiga executable.
 
+Oversized pitch files such as `SWCPICH7.MAP` and `SWCPICH8.MAP` are not extra game slots. To use one in SWOS, replace or rename it over one of the standard pitch files, `SWCPICH1.MAP` through `SWCPICH6.MAP`.
+
 ## Repository Layout
 
 - [`swosconv.c`](./swosconv.c) - single-file implementation
 - [`Makefile`](./Makefile) - build entrypoint
 - [`test/`](./test) - reference files, validation assets, and the Bash test runner
+- [`patch/`](./patch) - experimental Amiga `SWOS2` runtime patch assets for oversized legacy `.MAP` files
+
+## Runtime Patch Assets
+
+The [`patch/`](./patch) directory contains an experimental `SWOS2` runtime patch for loading oversized legacy `.MAP` files generated with `--no-tile-limit`.
+
+It includes:
+
+- [`SWOS2_OVERSIZED_MAP_PATCH.md`](./patch/SWOS2_OVERSIZED_MAP_PATCH.md) - technical patch notes, supported executable hashes, offsets, and validation notes
+- [`SWOS2_OVERSIZED_MAP.ips`](./patch/SWOS2_OVERSIZED_MAP.ips) - IPS patch for the supported unpacked `SWOS2` executables
+- `SWOS2_UNP_SWOSDE` and `SWOS2_UNP_WHDL` - supported original unpacked executables from common distributions
+- `SWOS2_UNP_SWOSDE_PATCHED` and `SWOS2_UNP_WHDL_PATCHED` - ready-made patched copies
+- [`patch_swos2_oversized_map.py`](./patch/patch_swos2_oversized_map.py) - local script to recreate a patched executable
+- [`make_swos2_oversized_map_ips.py`](./patch/make_swos2_oversized_map_ips.py) - local script to recreate the IPS patch
+
+The patch targets `SWOS2`, not the first `SWOS` module. It raises the relevant runtime size checks and relocates the pitch `.MAP` buffer so larger maps do not overwrite low-memory runtime state.
 
 ## Format Notes
 
@@ -130,6 +148,8 @@ without patching the runtime.
 By default, `RAW -> MAP`, `BMP -> MAP`, and `ILBM -> MAP` enforce that stock-compatible limit.
 
 With `--no-tile-limit`, `swosconv` can emit larger legacy `.MAP` files, but those are experimental and not compatible with the standard Amiga executable.
+
+Those oversized `.MAP` files still have to occupy an existing SWOS pitch slot. For example, `SWCPICH7.MAP` or `SWCPICH8.MAP` must be renamed over one of `SWCPICH1.MAP` through `SWCPICH6.MAP`; the game does not discover additional pitch numbers.
 
 ### RAW
 
