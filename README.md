@@ -256,9 +256,11 @@ The implementation reads and writes the essential ILBM chunks:
 - `DPI `
 - `BODY`
 
-The writer emits valid ILBM files using `ByteRun1` BODY compression.
+The writer emits valid ILBM files using `ByteRun1` BODY compression. Compression is applied per ILBM row and bitplane, which is required for compatibility with Amiga ILBM readers.
 
 For non-`SWCPICH` ILBM files, `.IFF -> .RAW` accepts 4-bitplane ILBM images with masking `0` and ByteRun1 or uncompressed BODY data. These files are converted directly row by row and are not valid input for `.MAP` conversion.
+
+Generated ILBM files intentionally omit non-essential metadata chunks such as `ANNO` and `DPPS`. They contain only `BMHD`, `CMAP`, `CAMG`, `DPI `, and `BODY`.
 
 ## Validation
 

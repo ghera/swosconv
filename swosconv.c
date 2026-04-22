@@ -424,7 +424,7 @@ static int encode_byterun1_row(const byte *row, int row_size, byte *out_row) {
             ++run_length;
         }
 
-        if (run_length >= 2) {
+        if (run_length >= 3) {
             out_row[out_pos++] = (byte)(257 - run_length);
             out_row[out_pos++] = row[in_pos];
             in_pos += run_length;
@@ -433,9 +433,7 @@ static int encode_byterun1_row(const byte *row, int row_size, byte *out_row) {
             int literal_length;
 
             literal_start = in_pos;
-            literal_length = 1;
-            ++in_pos;
-
+            literal_length = 0;
             while (in_pos < row_size && literal_length < 128) {
                 run_length = 1;
                 while (in_pos + run_length < row_size &&
@@ -443,7 +441,7 @@ static int encode_byterun1_row(const byte *row, int row_size, byte *out_row) {
                        row[in_pos + run_length] == row[in_pos]) {
                     ++run_length;
                 }
-                if (run_length >= 2) {
+                if (run_length >= 3) {
                     break;
                 }
                 ++in_pos;
@@ -591,11 +589,15 @@ static int convert_ilbm_to_raw_with_mode(const char *input_path, const char *out
                 return 1;
             }
         } else {
-            if (!decode_byterun1_row(in_file, row, format.body_row_bytes)) {
-                fclose(out_file);
-                fclose(in_file);
-                fprintf(stderr, "Failed to decode ILBM BODY.\n");
-                return 1;
+            int bp;
+
+            for (bp = 0; bp < format.bitplanes; ++bp) {
+                if (!decode_byterun1_row(in_file, row + (bp * format.row_bytes), format.row_bytes)) {
+                    fclose(out_file);
+                    fclose(in_file);
+                    fprintf(stderr, "Failed to decode ILBM BODY.\n");
+                    return 1;
+                }
             }
         }
         fwrite(row, 1, (size_t)format.body_row_bytes, out_file);
@@ -659,8 +661,8 @@ static int write_ilbm_from_raw_with_mode(const char *input_path, const char *out
     body_pos = 0;
     for (y = 0; y < format.height; ++y) {
         byte row[ILBM_BODY_ROW_BYTES];
-        byte encoded[(ILBM_BODY_ROW_BYTES * 2) + 2];
-        int encoded_size;
+        byte encoded[(ILBM_ROW_BYTES * 2) + 2];
+        int bp;
 
         if (format.body_row_bytes > ILBM_BODY_ROW_BYTES) {
             free(body_data);
@@ -676,9 +678,13 @@ static int write_ilbm_from_raw_with_mode(const char *input_path, const char *out
             return 1;
         }
 
-        encoded_size = encode_byterun1_row(row, format.body_row_bytes, encoded);
-        memcpy(body_data + body_pos, encoded, (size_t)encoded_size);
-        body_pos += encoded_size;
+        for (bp = 0; bp < format.bitplanes; ++bp) {
+            int encoded_size;
+
+            encoded_size = encode_byterun1_row(row + (bp * format.row_bytes), format.row_bytes, encoded);
+            memcpy(body_data + body_pos, encoded, (size_t)encoded_size);
+            body_pos += encoded_size;
+        }
     }
 
     fclose(in_file);
@@ -718,20 +724,13 @@ static int write_ilbm_from_raw_with_mode(const char *input_path, const char *out
         bmhd[3] = (byte)(format.height & 0xFF);
         bmhd[8] = (byte)format.bitplanes;
         bmhd[10] = 1;
-        bmhd[11] = 128;
+        bmhd[11] = 0;
         bmhd[14] = 44;
         bmhd[15] = 44;
-        if (pitch_only) {
-            bmhd[16] = 1;
-            bmhd[17] = 64;
-            bmhd[18] = 1;
-            bmhd[19] = 0;
-        } else {
-            bmhd[16] = (byte)((format.width >> 8) & 0xFF);
-            bmhd[17] = (byte)(format.width & 0xFF);
-            bmhd[18] = (byte)((format.height >> 8) & 0xFF);
-            bmhd[19] = (byte)(format.height & 0xFF);
-        }
+        bmhd[16] = (byte)((format.width >> 8) & 0xFF);
+        bmhd[17] = (byte)(format.width & 0xFF);
+        bmhd[18] = (byte)((format.height >> 8) & 0xFF);
+        bmhd[19] = (byte)(format.height & 0xFF);
         fwrite(bmhd, 1, 20, out_file);
 
         memcpy(chunk_header, "CMAP", 4);
