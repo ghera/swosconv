@@ -33,7 +33,15 @@ typedef uint32_t dword_t;
 #define ILBM_ROW_BYTES (((PITCH_WIDTH + 15) / 16) * 2)
 #define ILBM_BODY_ROW_BYTES (ILBM_ROW_BYTES * TILE_DEPTH)
 #define ILBM_CMAP_SIZE (BMP_PALETTE_ENTRIES * 3)
-#define SWOSCONV_VERSION "1.1.0"
+#define SWOSCONV_VERSION "1.2.0"
+
+typedef struct bitmap_format {
+    int width;
+    int height;
+    int bitplanes;
+    int row_bytes;
+    int body_row_bytes;
+} bitmap_format_t;
 
 /* clang-format off */
 static const uint8_t swos_bmp_palette[BMP_PALETTE_ENTRIES][4] = {
@@ -72,6 +80,44 @@ static const uint8_t swos_ilbm_cmap[BMP_PALETTE_ENTRIES][3] = {
     { 128, 128, 240 },
     { 48, 128, 0 },
     { 240, 240, 0 }
+};
+
+static const uint8_t simple_bmp_palette[BMP_PALETTE_ENTRIES][4] = {
+    { 0x00, 0x00, 0x00, 0x00 },
+    { 0x11, 0x11, 0x11, 0x00 },
+    { 0x22, 0x22, 0x22, 0x00 },
+    { 0x33, 0x33, 0x33, 0x00 },
+    { 0x44, 0x44, 0x44, 0x00 },
+    { 0x55, 0x55, 0x55, 0x00 },
+    { 0x66, 0x66, 0x66, 0x00 },
+    { 0x77, 0x77, 0x77, 0x00 },
+    { 0x88, 0x88, 0x88, 0x00 },
+    { 0x99, 0x99, 0x99, 0x00 },
+    { 0xAA, 0xAA, 0xAA, 0x00 },
+    { 0xBB, 0xBB, 0xBB, 0x00 },
+    { 0xCC, 0xCC, 0xCC, 0x00 },
+    { 0xDD, 0xDD, 0xDD, 0x00 },
+    { 0xEE, 0xEE, 0xEE, 0x00 },
+    { 0xFF, 0xFF, 0xFF, 0x00 }
+};
+
+static const uint8_t simple_ilbm_cmap[BMP_PALETTE_ENTRIES][3] = {
+    { 0, 0, 0 },
+    { 17, 17, 17 },
+    { 34, 34, 34 },
+    { 51, 51, 51 },
+    { 68, 68, 68 },
+    { 85, 85, 85 },
+    { 102, 102, 102 },
+    { 119, 119, 119 },
+    { 136, 136, 136 },
+    { 153, 153, 153 },
+    { 170, 170, 170 },
+    { 187, 187, 187 },
+    { 204, 204, 204 },
+    { 221, 221, 221 },
+    { 238, 238, 238 },
+    { 255, 255, 255 }
 };
 /* clang-format on */
 
@@ -220,6 +266,79 @@ static int extension_equals_ignore_case(const char *path, const char *expected) 
     return *extension == '\0' && *expected == '\0';
 }
 
+static const char *find_filename(const char *path) {
+    const char *filename;
+
+    filename = path;
+    while (*path != '\0') {
+        if (*path == '/' || *path == '\\') {
+            filename = path + 1;
+        }
+        ++path;
+    }
+
+    return filename;
+}
+
+static int starts_with_ignore_case(const char *text, const char *prefix) {
+    while (*prefix != '\0') {
+        if (*text == '\0' || tolower((unsigned char)*text) != tolower((unsigned char)*prefix)) {
+            return 0;
+        }
+        ++text;
+        ++prefix;
+    }
+
+    return 1;
+}
+
+static int is_swcpich_path(const char *path) {
+    return starts_with_ignore_case(find_filename(path), "SWCPICH");
+}
+
+static int ilbm_row_bytes_for_width(int width) {
+    return ((width + 15) / 16) * 2;
+}
+
+static bitmap_format_t make_bitmap_format(int width, int height, int bitplanes) {
+    bitmap_format_t format;
+
+    format.width = width;
+    format.height = height;
+    format.bitplanes = bitplanes;
+    format.row_bytes = ilbm_row_bytes_for_width(width);
+    format.body_row_bytes = format.row_bytes * bitplanes;
+    return format;
+}
+
+static int get_simple_raw_format_from_size(long input_size, bitmap_format_t *format) {
+    if (input_size == 40960L) {
+        *format = make_bitmap_format(320, 256, TILE_DEPTH);
+        return 1;
+    }
+
+    if (input_size == 47872L) {
+        *format = make_bitmap_format(345, 272, TILE_DEPTH);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int get_simple_bitmap_format_from_dimensions(long width, long height, bitmap_format_t *format) {
+    if (width == 320L && height == 256L) {
+        *format = make_bitmap_format(320, 256, TILE_DEPTH);
+        return 1;
+    }
+
+    if (width == 345L && height == 272L) {
+        *format = make_bitmap_format(345, 272, TILE_DEPTH);
+        return 1;
+    }
+
+    return 0;
+}
+
 static int read_file_size(FILE *file, long *size) {
     if (fseek(file, 0L, SEEK_END) != 0) {
         return 0;
@@ -341,7 +460,12 @@ static int encode_byterun1_row(const byte *row, int row_size, byte *out_row) {
     return out_pos;
 }
 
-static int locate_ilbm_body(FILE *in_file, long *body_offset, dword_t *body_size, byte *compression_out) {
+static int locate_ilbm_body(FILE *in_file,
+                            long *body_offset,
+                            dword_t *body_size,
+                            byte *compression_out,
+                            bitmap_format_t *format_out,
+                            int pitch_only) {
     byte form_header[12];
 
     if (fread(form_header, 1, 12, in_file) != 12) {
@@ -373,13 +497,20 @@ static int locate_ilbm_body(FILE *in_file, long *body_offset, dword_t *body_size
                 fprintf(stderr, "Invalid BMHD chunk.\n");
                 return 0;
             }
-            if (read_u16_be(bmhd + 0) != PITCH_WIDTH ||
-                read_u16_be(bmhd + 2) != PITCH_HEIGHT ||
-                bmhd[8] != TILE_DEPTH ||
-                bmhd[9] != 0) {
+            int width;
+            int height;
+
+            width = read_u16_be(bmhd + 0);
+            height = read_u16_be(bmhd + 2);
+            if (bmhd[8] != TILE_DEPTH || bmhd[9] != 0) {
                 fprintf(stderr, "Unsupported ILBM bitmap format.\n");
                 return 0;
             }
+            if (pitch_only && (width != PITCH_WIDTH || height != PITCH_HEIGHT)) {
+                fprintf(stderr, "Unsupported ILBM bitmap format.\n");
+                return 0;
+            }
+            *format_out = make_bitmap_format(width, height, bmhd[8]);
             *compression_out = bmhd[10];
         } else if (memcmp(chunk_header, "BODY", 4) == 0) {
             *body_offset = ftell(in_file);
@@ -401,22 +532,24 @@ static int locate_ilbm_body(FILE *in_file, long *body_offset, dword_t *body_size
     return 0;
 }
 
-static int convert_ilbm_to_raw(const char *input_path, const char *output_path) {
+static int convert_ilbm_to_raw_with_mode(const char *input_path, const char *output_path, int pitch_only) {
     FILE *in_file;
     FILE *out_file;
     long body_offset;
     dword_t body_size;
     byte compression;
+    bitmap_format_t format;
     int y;
 
     body_size = 0;
+    format = make_bitmap_format(0, 0, TILE_DEPTH);
     in_file = fopen(input_path, "rb");
     if (in_file == (FILE *)0) {
         fprintf(stderr, "Unable to open input file.\n");
         return 1;
     }
 
-    if (!locate_ilbm_body(in_file, &body_offset, &body_size, &compression)) {
+    if (!locate_ilbm_body(in_file, &body_offset, &body_size, &compression, &format, pitch_only)) {
         fclose(in_file);
         return 1;
     }
@@ -440,25 +573,32 @@ static int convert_ilbm_to_raw(const char *input_path, const char *output_path) 
         return 1;
     }
 
-    for (y = 0; y < PITCH_HEIGHT; ++y) {
+    for (y = 0; y < format.height; ++y) {
         byte row[ILBM_BODY_ROW_BYTES];
 
+        if (format.body_row_bytes > ILBM_BODY_ROW_BYTES) {
+            fclose(out_file);
+            fclose(in_file);
+            fprintf(stderr, "Unsupported ILBM bitmap width.\n");
+            return 1;
+        }
+
         if (compression == 0) {
-            if (fread(row, 1, ILBM_BODY_ROW_BYTES, in_file) != ILBM_BODY_ROW_BYTES) {
+            if (fread(row, 1, (size_t)format.body_row_bytes, in_file) != (size_t)format.body_row_bytes) {
                 fclose(out_file);
                 fclose(in_file);
                 fprintf(stderr, "Unexpected end of ILBM BODY.\n");
                 return 1;
             }
         } else {
-            if (!decode_byterun1_row(in_file, row, ILBM_BODY_ROW_BYTES)) {
+            if (!decode_byterun1_row(in_file, row, format.body_row_bytes)) {
                 fclose(out_file);
                 fclose(in_file);
                 fprintf(stderr, "Failed to decode ILBM BODY.\n");
                 return 1;
             }
         }
-        fwrite(row, 1, ILBM_BODY_ROW_BYTES, out_file);
+        fwrite(row, 1, (size_t)format.body_row_bytes, out_file);
     }
 
     fclose(out_file);
@@ -466,11 +606,16 @@ static int convert_ilbm_to_raw(const char *input_path, const char *output_path) 
     return 0;
 }
 
-static int write_ilbm_from_raw(const char *input_path, const char *output_path) {
+static int convert_ilbm_to_raw(const char *input_path, const char *output_path) {
+    return convert_ilbm_to_raw_with_mode(input_path, output_path, is_swcpich_path(input_path));
+}
+
+static int write_ilbm_from_raw_with_mode(const char *input_path, const char *output_path, int pitch_only) {
     FILE *in_file;
     FILE *out_file;
     long input_size;
     long expected_raw_size;
+    bitmap_format_t format;
     byte *body_data;
     dword_t body_size;
     dword_t form_size;
@@ -489,7 +634,15 @@ static int write_ilbm_from_raw(const char *input_path, const char *output_path) 
         return 1;
     }
 
-    expected_raw_size = (long)PITCH_HEIGHT * ILBM_BODY_ROW_BYTES;
+    if (pitch_only) {
+        format = make_bitmap_format(PITCH_WIDTH, PITCH_HEIGHT, TILE_DEPTH);
+    } else if (!get_simple_raw_format_from_size(input_size, &format)) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported simple RAW size: %ld bytes.\n", input_size);
+        return 1;
+    }
+
+    expected_raw_size = (long)format.height * format.body_row_bytes;
     if (input_size != expected_raw_size) {
         fclose(in_file);
         fprintf(stderr, "Unexpected RAW size: %ld bytes, expected %ld.\n", input_size, expected_raw_size);
@@ -504,19 +657,26 @@ static int write_ilbm_from_raw(const char *input_path, const char *output_path) 
     }
 
     body_pos = 0;
-    for (y = 0; y < PITCH_HEIGHT; ++y) {
+    for (y = 0; y < format.height; ++y) {
         byte row[ILBM_BODY_ROW_BYTES];
         byte encoded[(ILBM_BODY_ROW_BYTES * 2) + 2];
         int encoded_size;
 
-        if (fread(row, 1, ILBM_BODY_ROW_BYTES, in_file) != ILBM_BODY_ROW_BYTES) {
+        if (format.body_row_bytes > ILBM_BODY_ROW_BYTES) {
+            free(body_data);
+            fclose(in_file);
+            fprintf(stderr, "Unsupported RAW bitmap width.\n");
+            return 1;
+        }
+
+        if (fread(row, 1, (size_t)format.body_row_bytes, in_file) != (size_t)format.body_row_bytes) {
             free(body_data);
             fclose(in_file);
             fprintf(stderr, "Unexpected end of RAW data.\n");
             return 1;
         }
 
-        encoded_size = encode_byterun1_row(row, ILBM_BODY_ROW_BYTES, encoded);
+        encoded_size = encode_byterun1_row(row, format.body_row_bytes, encoded);
         memcpy(body_data + body_pos, encoded, (size_t)encoded_size);
         body_pos += encoded_size;
     }
@@ -536,6 +696,9 @@ static int write_ilbm_from_raw(const char *input_path, const char *output_path) 
         byte header[12];
         byte bmhd[20];
         byte chunk_header[8];
+        const uint8_t (*ilbm_cmap)[3];
+
+        ilbm_cmap = pitch_only ? swos_ilbm_cmap : simple_ilbm_cmap;
 
         memcpy(header, "FORM", 4);
         write_u32_le(header + 4, swap_u32(form_size));
@@ -549,19 +712,26 @@ static int write_ilbm_from_raw(const char *input_path, const char *output_path) 
         chunk_header[7] = 20;
         fwrite(chunk_header, 1, 8, out_file);
         memset(bmhd, 0, sizeof(bmhd));
-        bmhd[0] = (byte)((PITCH_WIDTH >> 8) & 0xFF);
-        bmhd[1] = (byte)(PITCH_WIDTH & 0xFF);
-        bmhd[2] = (byte)((PITCH_HEIGHT >> 8) & 0xFF);
-        bmhd[3] = (byte)(PITCH_HEIGHT & 0xFF);
-        bmhd[8] = TILE_DEPTH;
+        bmhd[0] = (byte)((format.width >> 8) & 0xFF);
+        bmhd[1] = (byte)(format.width & 0xFF);
+        bmhd[2] = (byte)((format.height >> 8) & 0xFF);
+        bmhd[3] = (byte)(format.height & 0xFF);
+        bmhd[8] = (byte)format.bitplanes;
         bmhd[10] = 1;
         bmhd[11] = 128;
         bmhd[14] = 44;
         bmhd[15] = 44;
-        bmhd[16] = 1;
-        bmhd[17] = 64;
-        bmhd[18] = 1;
-        bmhd[19] = 0;
+        if (pitch_only) {
+            bmhd[16] = 1;
+            bmhd[17] = 64;
+            bmhd[18] = 1;
+            bmhd[19] = 0;
+        } else {
+            bmhd[16] = (byte)((format.width >> 8) & 0xFF);
+            bmhd[17] = (byte)(format.width & 0xFF);
+            bmhd[18] = (byte)((format.height >> 8) & 0xFF);
+            bmhd[19] = (byte)(format.height & 0xFF);
+        }
         fwrite(bmhd, 1, 20, out_file);
 
         memcpy(chunk_header, "CMAP", 4);
@@ -570,7 +740,7 @@ static int write_ilbm_from_raw(const char *input_path, const char *output_path) 
         chunk_header[6] = 0;
         chunk_header[7] = ILBM_CMAP_SIZE;
         fwrite(chunk_header, 1, 8, out_file);
-        fwrite(swos_ilbm_cmap, 1, ILBM_CMAP_SIZE, out_file);
+        fwrite(ilbm_cmap, 1, ILBM_CMAP_SIZE, out_file);
 
         memcpy(chunk_header, "CAMG", 4);
         chunk_header[4] = 0;
@@ -608,6 +778,10 @@ static int write_ilbm_from_raw(const char *input_path, const char *output_path) 
     return 0;
 }
 
+static int write_ilbm_from_raw(const char *input_path, const char *output_path) {
+    return write_ilbm_from_raw_with_mode(input_path, output_path, is_swcpich_path(input_path));
+}
+
 static int load_ilbm_pixels(const char *input_path, byte **pixels_out) {
     char tmp_raw_path[L_tmpnam + 4];
     int result;
@@ -618,7 +792,7 @@ static int load_ilbm_pixels(const char *input_path, byte **pixels_out) {
         return 1;
     }
 
-    result = convert_ilbm_to_raw(input_path, tmp_raw_path);
+    result = convert_ilbm_to_raw_with_mode(input_path, tmp_raw_path, 1);
     if (result != 0) {
         remove(tmp_raw_path);
         return result;
@@ -820,7 +994,10 @@ static int load_map_pixels(const char *input_path, byte **pixels_out) {
     return 0;
 }
 
-static int load_bmp_pixels(const char *input_path, byte **pixels_out) {
+static int load_bmp_pixels_with_mode(const char *input_path,
+                                     byte **pixels_out,
+                                     int pitch_only,
+                                     bitmap_format_t *format_out) {
     FILE *in_file;
     long input_size;
     byte *bmp_data;
@@ -897,13 +1074,20 @@ static int load_bmp_pixels(const char *input_path, byte **pixels_out) {
         height = signed_height;
     }
 
-    if (width != PITCH_WIDTH || height != PITCH_HEIGHT) {
+    if (pitch_only) {
+        if (width != PITCH_WIDTH || height != PITCH_HEIGHT) {
+            free(bmp_data);
+            fprintf(stderr, "Unsupported BMP size: %ldx%ld, expected %dx%d.\n",
+                    width,
+                    height,
+                    PITCH_WIDTH,
+                    PITCH_HEIGHT);
+            return 1;
+        }
+        *format_out = make_bitmap_format(PITCH_WIDTH, PITCH_HEIGHT, TILE_DEPTH);
+    } else if (!get_simple_bitmap_format_from_dimensions(width, height, format_out)) {
         free(bmp_data);
-        fprintf(stderr, "Unsupported BMP size: %ldx%ld, expected %dx%d.\n",
-                width,
-                height,
-                PITCH_WIDTH,
-                PITCH_HEIGHT);
+        fprintf(stderr, "Unsupported simple BMP size: %ldx%ld.\n", width, height);
         return 1;
     }
 
@@ -930,7 +1114,7 @@ static int load_bmp_pixels(const char *input_path, byte **pixels_out) {
         return 1;
     }
 
-    pixels = (byte *)malloc((size_t)(width * height));
+    pixels = (byte *)malloc((size_t)(format_out->width * format_out->height));
     if (pixels == (byte *)0) {
         free(bmp_data);
         fprintf(stderr, "Out of memory while expanding BMP pixels.\n");
@@ -947,12 +1131,14 @@ static int load_bmp_pixels(const char *input_path, byte **pixels_out) {
         src_row = bmp_data + pixel_data_offset + src_y * row_size;
         dst_row = pixels + y * width;
 
-        for (x = 0; x < width / 2; ++x) {
+        for (x = 0; x < (width + 1) / 2; ++x) {
             byte packed_pixels;
 
             packed_pixels = src_row[x];
             dst_row[x * 2] = (byte)(packed_pixels >> 4);
-            dst_row[x * 2 + 1] = (byte)(packed_pixels & 0x0F);
+            if ((x * 2 + 1) < width) {
+                dst_row[x * 2 + 1] = (byte)(packed_pixels & 0x0F);
+            }
         }
     }
 
@@ -961,7 +1147,15 @@ static int load_bmp_pixels(const char *input_path, byte **pixels_out) {
     return 0;
 }
 
-static int write_raw_from_pixels(const byte *pixels, const char *output_path) {
+static int load_bmp_pixels(const char *input_path, byte **pixels_out) {
+    bitmap_format_t format;
+
+    return load_bmp_pixels_with_mode(input_path, pixels_out, 1, &format);
+}
+
+static int write_raw_from_pixels_with_format(const byte *pixels,
+                                             const char *output_path,
+                                             const bitmap_format_t *format) {
     FILE *out_file;
     int y;
 
@@ -971,29 +1165,35 @@ static int write_raw_from_pixels(const byte *pixels, const char *output_path) {
         return 1;
     }
 
-    for (y = 0; y < PITCH_HEIGHT; ++y) {
-        int tile_col;
+    for (y = 0; y < format->height; ++y) {
         int bp;
 
+        if (format->body_row_bytes > RAW_ROW_BYTES) {
+            fclose(out_file);
+            fprintf(stderr, "Unsupported RAW bitmap width.\n");
+            return 1;
+        }
+
         for (bp = 0; bp < TILE_DEPTH; ++bp) {
-            for (tile_col = 0; tile_col < TILES_MAP_COLS; ++tile_col) {
-                int byte_index;
+            int byte_index;
 
-                for (byte_index = 0; byte_index < BYTES_PER_BITPLANE_PX_ROW; ++byte_index) {
-                    byte out_byte;
-                    int bit;
+            for (byte_index = 0; byte_index < format->row_bytes; ++byte_index) {
+                byte out_byte;
+                int bit;
 
-                    out_byte = 0;
-                    for (bit = 0; bit < 8; ++bit) {
-                        long x;
-                        byte color_index;
+                out_byte = 0;
+                for (bit = 0; bit < 8; ++bit) {
+                    long x;
+                    byte color_index;
 
-                        x = (long)(tile_col * TILE_WIDTH + byte_index * 8 + bit);
-                        color_index = pixels[y * PITCH_WIDTH + x];
-                        out_byte = (byte)((out_byte << 1) | ((color_index >> bp) & 1));
+                    x = (long)(byte_index * 8 + bit);
+                    color_index = 0;
+                    if (x < format->width) {
+                        color_index = pixels[y * format->width + x];
                     }
-                    fwrite(&out_byte, 1, 1, out_file);
+                    out_byte = (byte)((out_byte << 1) | ((color_index >> bp) & 1));
                 }
+                fwrite(&out_byte, 1, 1, out_file);
             }
         }
     }
@@ -1002,12 +1202,15 @@ static int write_raw_from_pixels(const byte *pixels, const char *output_path) {
     return 0;
 }
 
-static int load_raw_pixels(const char *input_path, byte **pixels_out) {
+static int load_raw_pixels_with_mode(const char *input_path,
+                                     byte **pixels_out,
+                                     int pitch_only,
+                                     bitmap_format_t *format_out) {
     FILE *in_file;
     long input_size;
     long expected_raw_size;
     byte *pixels;
-    int tile_row;
+    int y;
 
     *pixels_out = (byte *)0;
 
@@ -1023,63 +1226,67 @@ static int load_raw_pixels(const char *input_path, byte **pixels_out) {
         return 1;
     }
 
-    expected_raw_size = (long)TILES_MAP_ROWS * TILE_HEIGHT * RAW_ROW_BYTES;
+    if (pitch_only) {
+        *format_out = make_bitmap_format(PITCH_WIDTH, PITCH_HEIGHT, TILE_DEPTH);
+    } else if (!get_simple_raw_format_from_size(input_size, format_out)) {
+        fclose(in_file);
+        fprintf(stderr, "Unsupported simple RAW size: %ld bytes.\n", input_size);
+        return 1;
+    }
+
+    expected_raw_size = (long)format_out->height * format_out->body_row_bytes;
     if (input_size != expected_raw_size) {
         fclose(in_file);
         fprintf(stderr, "Unexpected RAW size: %ld bytes, expected %ld.\n", input_size, expected_raw_size);
         return 1;
     }
 
-    pixels = (byte *)malloc((size_t)(PITCH_WIDTH * PITCH_HEIGHT));
+    pixels = (byte *)malloc((size_t)(format_out->width * format_out->height));
     if (pixels == (byte *)0) {
         fclose(in_file);
         fprintf(stderr, "Out of memory while expanding RAW pixels.\n");
         return 1;
     }
-    memset(pixels, 0, (size_t)(PITCH_WIDTH * PITCH_HEIGHT));
+    memset(pixels, 0, (size_t)(format_out->width * format_out->height));
 
-    for (tile_row = 0; tile_row < TILES_MAP_ROWS; ++tile_row) {
-        int px_row;
+    for (y = 0; y < format_out->height; ++y) {
+        byte pixel_row[RAW_ROW_BYTES];
+        int bp;
 
-        for (px_row = 0; px_row < TILE_HEIGHT; ++px_row) {
-            byte pixel_row[RAW_ROW_BYTES];
-            int bp;
-            int y;
+        if (format_out->body_row_bytes > RAW_ROW_BYTES) {
+            free(pixels);
+            fclose(in_file);
+            fprintf(stderr, "Unsupported RAW bitmap width.\n");
+            return 1;
+        }
 
-            if (fread(pixel_row, 1, RAW_ROW_BYTES, in_file) != RAW_ROW_BYTES) {
-                free(pixels);
-                fclose(in_file);
-                fprintf(stderr, "Unexpected end of RAW data.\n");
-                return 1;
-            }
+        if (fread(pixel_row, 1, (size_t)format_out->body_row_bytes, in_file) !=
+            (size_t)format_out->body_row_bytes) {
+            free(pixels);
+            fclose(in_file);
+            fprintf(stderr, "Unexpected end of RAW data.\n");
+            return 1;
+        }
 
-            y = tile_row * TILE_HEIGHT + px_row;
-            for (bp = 0; bp < TILE_DEPTH; ++bp) {
-                int bitplane_tile_idx;
-                int bitplane_row_idx;
-                int tile_col;
+        for (bp = 0; bp < TILE_DEPTH; ++bp) {
+            int bitplane_row_idx;
+            int byte_index;
 
-                bitplane_tile_idx = BYTES_PER_BITPLANE_PX_ROW * bp;
-                bitplane_row_idx = bitplane_tile_idx * TILES_MAP_COLS;
-                for (tile_col = 0; tile_col < TILES_MAP_COLS; ++tile_col) {
-                    int bitplane_col_idx;
-                    int byte_index;
+            bitplane_row_idx = bp * format_out->row_bytes;
+            for (byte_index = 0; byte_index < format_out->row_bytes; ++byte_index) {
+                byte packed_bits;
+                int bit;
 
-                    bitplane_col_idx = bitplane_row_idx + tile_col * BYTES_PER_BITPLANE_PX_ROW;
-                    for (byte_index = 0; byte_index < BYTES_PER_BITPLANE_PX_ROW; ++byte_index) {
-                        byte packed_bits;
-                        int bit;
+                packed_bits = pixel_row[bitplane_row_idx + byte_index];
+                for (bit = 0; bit < 8; ++bit) {
+                    long x;
+                    byte plane_bit;
 
-                        packed_bits = pixel_row[bitplane_col_idx + byte_index];
-                        for (bit = 0; bit < 8; ++bit) {
-                            long x;
-                            byte plane_bit;
-
-                            x = (long)(tile_col * TILE_WIDTH + byte_index * 8 + bit);
-                            plane_bit = (byte)((packed_bits >> (7 - bit)) & 1);
-                            pixels[y * PITCH_WIDTH + x] =
-                                (byte)(pixels[y * PITCH_WIDTH + x] | (plane_bit << bp));
-                        }
+                    x = (long)(byte_index * 8 + bit);
+                    if (x < format_out->width) {
+                        plane_bit = (byte)((packed_bits >> (7 - bit)) & 1);
+                        pixels[y * format_out->width + x] =
+                            (byte)(pixels[y * format_out->width + x] | (plane_bit << bp));
                     }
                 }
             }
@@ -1091,7 +1298,16 @@ static int load_raw_pixels(const char *input_path, byte **pixels_out) {
     return 0;
 }
 
-static int write_bmp_from_pixels(const byte *pixels, const char *output_path) {
+static int load_raw_pixels(const char *input_path, byte **pixels_out) {
+    bitmap_format_t format;
+
+    return load_raw_pixels_with_mode(input_path, pixels_out, 1, &format);
+}
+
+static int write_bmp_from_pixels_with_format(const byte *pixels,
+                                             const char *output_path,
+                                             const bitmap_format_t *format,
+                                             const uint8_t (*bmp_palette)[4]) {
     FILE *out_file;
     long row_size;
     dword_t pixel_data_offset;
@@ -1100,9 +1316,9 @@ static int write_bmp_from_pixels(const byte *pixels, const char *output_path) {
     byte info_header[BMP_INFO_HEADER_SIZE];
     int y;
 
-    row_size = (((PITCH_WIDTH * 4L) + 31L) / 32L) * 4L;
+    row_size = ((((long)format->width * 4L) + 31L) / 32L) * 4L;
     pixel_data_offset = BMP_FILE_HEADER_SIZE + BMP_INFO_HEADER_SIZE + BMP_PALETTE_SIZE;
-    file_size = pixel_data_offset + (dword_t)(row_size * PITCH_HEIGHT);
+    file_size = pixel_data_offset + (dword_t)(row_size * format->height);
 
     out_file = fopen(output_path, "wb");
     if (out_file == (FILE *)0) {
@@ -1119,8 +1335,8 @@ static int write_bmp_from_pixels(const byte *pixels, const char *output_path) {
     write_u32_le(file_header + 10, pixel_data_offset);
 
     write_u32_le(info_header + 0, BMP_INFO_HEADER_SIZE);
-    write_u32_le(info_header + 4, (dword_t)PITCH_WIDTH);
-    write_u32_le(info_header + 8, (dword_t)PITCH_HEIGHT);
+    write_u32_le(info_header + 4, (dword_t)format->width);
+    write_u32_le(info_header + 8, (dword_t)format->height);
     write_u16_le(info_header + 12, 1);
     write_u16_le(info_header + 14, 4);
     write_u32_le(info_header + 16, 0);
@@ -1132,19 +1348,22 @@ static int write_bmp_from_pixels(const byte *pixels, const char *output_path) {
 
     fwrite(file_header, 1, sizeof(file_header), out_file);
     fwrite(info_header, 1, sizeof(info_header), out_file);
-    fwrite(swos_bmp_palette, 1, sizeof(swos_bmp_palette), out_file);
+    fwrite(bmp_palette, 1, BMP_PALETTE_SIZE, out_file);
 
-    for (y = PITCH_HEIGHT - 1; y >= 0; --y) {
+    for (y = format->height - 1; y >= 0; --y) {
         byte row_data[(PITCH_WIDTH / 2) + 4];
         int x;
 
         memset(row_data, 0, sizeof(row_data));
-        for (x = 0; x < PITCH_WIDTH; x += 2) {
+        for (x = 0; x < format->width; x += 2) {
             byte left;
             byte right;
 
-            left = pixels[y * PITCH_WIDTH + x];
-            right = pixels[y * PITCH_WIDTH + x + 1];
+            left = pixels[y * format->width + x];
+            right = 0;
+            if ((x + 1) < format->width) {
+                right = pixels[y * format->width + x + 1];
+            }
             row_data[x / 2] = (byte)((left << 4) | (right & 0x0F));
         }
         fwrite(row_data, 1, (size_t)row_size, out_file);
@@ -1154,30 +1373,42 @@ static int write_bmp_from_pixels(const byte *pixels, const char *output_path) {
     return 0;
 }
 
+static int write_bmp_from_pixels(const byte *pixels, const char *output_path) {
+    bitmap_format_t format;
+
+    format = make_bitmap_format(PITCH_WIDTH, PITCH_HEIGHT, TILE_DEPTH);
+    return write_bmp_from_pixels_with_format(pixels, output_path, &format, swos_bmp_palette);
+}
+
 static int convert_bmp_to_raw(const char *input_path, const char *output_path) {
     byte *pixels;
+    bitmap_format_t format;
     int result;
 
-    result = load_bmp_pixels(input_path, &pixels);
+    result = load_bmp_pixels_with_mode(input_path, &pixels, is_swcpich_path(input_path), &format);
     if (result != 0) {
         return result;
     }
 
-    result = write_raw_from_pixels(pixels, output_path);
+    result = write_raw_from_pixels_with_format(pixels, output_path, &format);
     free(pixels);
     return result;
 }
 
 static int convert_raw_to_bmp(const char *input_path, const char *output_path) {
     byte *pixels;
+    bitmap_format_t format;
     int result;
 
-    result = load_raw_pixels(input_path, &pixels);
+    result = load_raw_pixels_with_mode(input_path, &pixels, is_swcpich_path(input_path), &format);
     if (result != 0) {
         return result;
     }
 
-    result = write_bmp_from_pixels(pixels, output_path);
+    result = write_bmp_from_pixels_with_format(pixels,
+                                               output_path,
+                                               &format,
+                                               is_swcpich_path(input_path) ? swos_bmp_palette : simple_bmp_palette);
     free(pixels);
     return result;
 }
@@ -1370,7 +1601,7 @@ static int convert_map_to_ilbm(const char *input_path, const char *output_path) 
         return result;
     }
 
-    result = write_ilbm_from_raw(tmp_raw_path, output_path);
+    result = write_ilbm_from_raw_with_mode(tmp_raw_path, output_path, 1);
     remove(tmp_raw_path);
     return result;
 }
@@ -1382,7 +1613,11 @@ static void print_supported_conversions(FILE *stream) {
             "  .RAW -> .MAP, .BMP, .IFF (ILBM)\n"
             "  .MAP -> .RAW, .BMP, .IFF (ILBM)\n"
             "  .BMP -> .RAW, .MAP\n"
-            "  .IFF (ILBM) -> .RAW, .MAP\n");
+            "  .IFF (ILBM) -> .RAW, .MAP\n"
+            "\n"
+            "Format selection:\n"
+            "  SWCPICH* files use the SWOS pitch/tile workflow and support .MAP.\n"
+            "  Other 4-bitplane graphics use simple planar .RAW/.BMP/.IFF conversion.\n");
 }
 
 static void print_usage(FILE *stream) {

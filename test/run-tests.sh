@@ -170,4 +170,35 @@ for n in 7 8; do
     printf 'PASS SWCPICH%s ILBM->MAP rejected\n' "$n"
 done
 
+for name in CJCGRAFS MENUS2 LOADER1 MENUBG; do
+    iff_path="test/ilbm/${name}.IFF"
+    raw_path="test/raw/${name}.RAW"
+    bmp_path="test/bmp/${name}.BMP"
+
+    if [ ! -f "$iff_path" ] || [ ! -f "$raw_path" ] || [ ! -f "$bmp_path" ]; then
+        continue
+    fi
+
+    raw_from_ilbm="$TEMP_ROOT/${name}.from_ilbm.raw"
+    ilbm_from_raw="$TEMP_ROOT/${name}.from_raw.iff"
+    bmp_from_raw="$TEMP_ROOT/${name}.from_raw.bmp"
+    raw_from_bmp="$TEMP_ROOT/${name}.from_bmp.raw"
+
+    invoke_converter "$iff_path" "$raw_from_ilbm" "${name}_ilbm_to_raw"
+    assert_file_equal "$raw_from_ilbm" "$raw_path" "$name ILBM->RAW"
+    printf 'PASS %s ILBM->RAW\n' "$name"
+
+    invoke_converter "$raw_path" "$bmp_from_raw" "${name}_raw_to_bmp"
+    assert_file_equal "$bmp_from_raw" "$bmp_path" "$name RAW->BMP"
+    printf 'PASS %s RAW->BMP\n' "$name"
+
+    invoke_converter "$bmp_path" "$raw_from_bmp" "${name}_bmp_to_raw"
+    assert_file_equal "$raw_from_bmp" "$raw_path" "$name BMP->RAW"
+    printf 'PASS %s BMP->RAW\n' "$name"
+
+    invoke_converter "$raw_path" "$ilbm_from_raw" "${name}_raw_to_ilbm"
+    assert_file_equal "$ilbm_from_raw" "$iff_path" "$name RAW->ILBM"
+    printf 'PASS %s RAW->ILBM\n' "$name"
+done
+
 printf 'All conversion tests passed.\n'
