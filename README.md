@@ -96,9 +96,9 @@ Mode detection is automatic from file extensions.
 
 ### `--no-tile-limit`
 
-`--no-tile-limit` is an experimental flag for writing oversized legacy `.MAP` files.
+`--no-tile-limit` is an experimental flag for writing oversized `.MAP` files.
 
-The resulting files are not compatible with the standard Amiga executable.
+The resulting files are not compatible with the standard Amiga executable (see [Runtime Patch Assets](#runtime-patch-assets)).
 
 > **Oversized** refers to the number of distinct tiles in the `.MAP` file exceeding the stock loader's tile limit, not to image resolution.
 
@@ -112,11 +112,11 @@ Oversized pitch files such as `SWCPICH7.MAP` and `SWCPICH8.MAP` are not extra ga
 - [`Makefile`](./Makefile) - build entrypoint
 - [`test/`](./test) - reference files, validation assets, and the Bash test runner
 - [`whitelabel/`](./whitelabel) - neutral SWOS graphic assets with event/year-specific references removed
-- [`patch/`](./patch) - experimental Amiga `SWOS2` runtime patch assets for oversized legacy `.MAP` files
+- [`patch/`](./patch) - experimental Amiga `SWOS2` runtime patch assets for oversized `.MAP` files
 
 ## Runtime Patch Assets
 
-The [`patch/`](./patch) directory contains an experimental `SWOS2` runtime patch for loading oversized legacy `.MAP` files generated with `--no-tile-limit`.
+The [`patch/`](./patch) directory contains an experimental `SWOS2` runtime patch for loading oversized `.MAP` files generated with `--no-tile-limit`.
 
 It includes:
 
