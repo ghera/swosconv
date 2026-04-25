@@ -100,7 +100,11 @@ Mode detection is automatic from file extensions.
 
 The resulting files are not compatible with the standard Amiga executable.
 
+> **Oversized** refers to the number of distinct tiles in the `.MAP` file exceeding the stock loader's tile limit, not to image resolution.
+
 Oversized pitch files such as `SWCPICH7.MAP` and `SWCPICH8.MAP` are not extra game slots. To use one in SWOS, replace or rename it over one of the standard pitch files, `SWCPICH1.MAP` through `SWCPICH6.MAP`.
+
+![Oversized field example](noTileLimit.png)
 
 ## Repository Layout
 

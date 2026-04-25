@@ -4,7 +4,9 @@
 
 This document is the canonical technical note for the SWOS2 runtime patch that allows oversized legacy pitch `.MAP` files under WHDLoad.
 
-The patch keeps the original `.MAP` format. It does not introduce MAPX or any new runtime format.
+The patch keeps the original `.MAP` format.
+
+> **Oversized** refers to the number of distinct tiles in the `.MAP` file exceeding the stock loader's tile limit, not to image resolution.
 
 ## Supported Executables
 
