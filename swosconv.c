@@ -33,7 +33,7 @@ typedef uint32_t dword_t;
 #define ILBM_ROW_BYTES (((PITCH_WIDTH + 15) / 16) * 2)
 #define ILBM_BODY_ROW_BYTES (ILBM_ROW_BYTES * TILE_DEPTH)
 #define ILBM_CMAP_SIZE (BMP_PALETTE_ENTRIES * 3)
-#define SWOSCONV_VERSION "1.2.1"
+#define SWOSCONV_VERSION "1.2.2"
 
 typedef struct bitmap_format {
     int width;
@@ -1616,7 +1616,8 @@ static void print_supported_conversions(FILE *stream) {
             "\n"
             "Format selection:\n"
             "  Only SWCPICH* files support .RAW/.BMP/.IFF <-> .MAP (SWOS tilemapped).\n"
-            "  Other 4-bitplane graphics use simple planar .RAW/.BMP/.IFF conversion.\n");
+            "  Other 4-bitplane graphics use simple planar .RAW/.BMP/.IFF conversion.\n"
+            "  Note: .MAP files must be uncompressed. Original game files use RNC ProPack.\n");
 }
 
 static void print_usage(FILE *stream) {
@@ -1632,7 +1633,7 @@ static void print_usage(FILE *stream) {
             "\n"
             "Options:\n"
             "  -n, --no-tile-limit\n"
-            "      Experimental. Allows writing legacy .MAP files beyond the stock\n"
+            "      Experimental. Allows writing .MAP files beyond the stock\n"
             "      SWOS size limit. These files are not compatible with the standard\n"
             "      Amiga executable.\n");
 }

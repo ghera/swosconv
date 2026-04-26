@@ -20,6 +20,8 @@ Supported conversions:
 - `.BMP -> .RAW, .MAP`
 - `.IFF (ILBM) -> .RAW, .MAP`
 
+> **Note:** `.MAP` files must be uncompressed. The game reads both compressed and uncompressed `.MAP` files, but original game assets use [RNC ProPack](https://aminet.net/package/util/pack/RNC_ProPack). Decompress before use with `swosconv`.
+
 ## Build
 
 Primary build path:
