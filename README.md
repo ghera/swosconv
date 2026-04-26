@@ -58,16 +58,22 @@ Automated test suite:
 make test
 ```
 
-Strict host build example:
+Build release binaries for Windows and Amiga:
 
 ```sh
-gcc -std=c99 -pedantic -Wall -Wextra -Werror swosconv.c -o swosconv.exe
+make release
 ```
 
-Cross-compiler example:
+Cross-compile with [bebbo's amiga-gcc](https://franke.ms/git/bebbo/amiga-gcc):
 
 ```sh
-make CC=m68k-amigaos-gcc EXE=swosconv
+make amiga
+```
+
+Compile on a real Amiga with [vbcc](http://sun.hasenbraten.de/vbcc/) ([Aminet link](https://aminet.net/package/dev/c/vbcc_bin_amigaos68k)):
+
+```sh
+vc -c99 -O2 -o swosconv swosconv.c
 ```
 
 ## Usage
@@ -161,7 +167,7 @@ Each scanline is written as:
 
 Within each plane byte, pixels are packed MSB-first.
 
-For other 4-bitplane graphics such as menu and loader assets, `.IFF <-> .RAW` uses a simple planar/interleaved bitmap conversion instead of the pitch tile workflow. The converter reads the ILBM dimensions from `BMHD` for `.IFF -> .RAW`; for `.RAW -> .IFF`, the supported simple RAW sizes are:
+For other 4-bitplane graphics such as menu and loader assets, `.IFF <-> .RAW` uses a simple planar/interleaved bitmap conversion instead of the tilemapped format. The converter reads the ILBM dimensions from `BMHD` for `.IFF -> .RAW`; for `.RAW -> .IFF`, the supported simple RAW sizes are:
 
 - `40960` bytes: `320x256`, 4 bitplanes
 - `47872` bytes: `345x272`, 4 bitplanes

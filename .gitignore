@@ -20,6 +20,7 @@
 
 # Executables
 *.exe
+!release/*.exe
 *.out
 
 # Linker output

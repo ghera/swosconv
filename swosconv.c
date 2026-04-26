@@ -33,7 +33,7 @@ typedef uint32_t dword_t;
 #define ILBM_ROW_BYTES (((PITCH_WIDTH + 15) / 16) * 2)
 #define ILBM_BODY_ROW_BYTES (ILBM_ROW_BYTES * TILE_DEPTH)
 #define ILBM_CMAP_SIZE (BMP_PALETTE_ENTRIES * 3)
-#define SWOSCONV_VERSION "1.2.0"
+#define SWOSCONV_VERSION "1.2.1"
 
 typedef struct bitmap_format {
     int width;
@@ -1615,7 +1615,7 @@ static void print_supported_conversions(FILE *stream) {
             "  .IFF (ILBM) -> .RAW, .MAP\n"
             "\n"
             "Format selection:\n"
-            "  SWCPICH* files use the SWOS pitch/tile workflow and support .MAP.\n"
+            "  Only SWCPICH* files support .RAW/.BMP/.IFF <-> .MAP (SWOS tilemapped).\n"
             "  Other 4-bitplane graphics use simple planar .RAW/.BMP/.IFF conversion.\n");
 }
 
